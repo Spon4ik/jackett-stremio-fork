@@ -23,46 +23,290 @@ const respond = (res, data) => {
     res.send(data);
 };
 
-const manifest = {
-    "id": "org.stremio.jackett",
-    "version": version,
+function getBaseUrl(req, encodedConfig = '') {
+    const prefix = encodedConfig ? `/${encodedConfig}` : '';
+    return `${req.protocol}://${req.get('host')}${prefix}`;
+}
 
-    "name": config.addonName,
-    "description": "Stremio Add-on to get torrent results from Jackett.",
+function buildManifest(runtimeConfig) {
+    return {
+        "id": "org.stremio.jackett",
+        "version": version,
 
-    "icon": "https://svgur.com/i/12Ss.svg",
-    "logo": "https://uxwing.com/wp-content/themes/uxwing/download/clothes-and-accessories/hoodie-jacket-icon.png",
+        "name": runtimeConfig.addonName,
+        "description": "Stremio Add-on to get torrent results from Jackett.",
 
-    "resources": [
-        {
-            "name": "stream",
-            "types": [
-                "movie",
-                "series"
-            ],
-            "idPrefixes": [
-                "tt",
-                "tmdb"
-            ]
+        "icon": "https://svgur.com/i/12Ss.svg",
+        "logo": "https://uxwing.com/wp-content/themes/uxwing/download/clothes-and-accessories/hoodie-jacket-icon.png",
+
+        "resources": [
+            {
+                "name": "stream",
+                "types": [
+                    "movie",
+                    "series"
+                ],
+                "idPrefixes": [
+                    "tt",
+                    "tmdb"
+                ]
+            }
+        ],
+
+        "behaviorHints": {
+            "p2p": true,
+            "configurable": true,
+            "adult": false,
+            "configurationRequired": false
+        },
+
+        "types": ["movie", "series"],
+        "idPrefixes": ["tt", "tmdb"],
+
+        "catalogs": []
+    };
+}
+
+function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
+    const manifestUrl = `${getBaseUrl(req, encodedConfig)}/manifest.json`;
+    const selectedLanguages = runtimeConfig.allowedLanguages.length > 0 ? runtimeConfig.allowedLanguages : config.supportedLanguages;
+    const selectedSortOrder = helper.normalizeSortOrder(runtimeConfig.sortOrder);
+    const summary = `Language priority: ${selectedLanguages.join(' > ') || 'none'} | Min resolution: ${runtimeConfig.minimumResolution || 'any'} | Sort: ${selectedSortOrder.join(' > ')}`;
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${config.addonName} Setup</title>
+    <style>
+        :root { color-scheme: dark; --bg: #111827; --panel: #1f2937; --muted: #9ca3af; --text: #f9fafb; --accent: #f59e0b; --border: #374151; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: "Segoe UI", sans-serif; background: radial-gradient(circle at top, #1f2937, #0f172a 65%); color: var(--text); }
+        main { max-width: 860px; margin: 0 auto; padding: 32px 20px 48px; }
+        .panel { background: rgba(17, 24, 39, 0.92); border: 1px solid var(--border); border-radius: 18px; padding: 24px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); }
+        h1, h2 { margin: 0 0 12px; }
+        p { color: var(--muted); line-height: 1.5; }
+        .grid { display: grid; gap: 18px; }
+        .triple { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+        label { display: block; font-weight: 600; margin-bottom: 8px; }
+        select, input, button, textarea { width: 100%; border-radius: 12px; border: 1px solid var(--border); background: #111827; color: var(--text); padding: 12px 14px; }
+        button { background: linear-gradient(135deg, #f59e0b, #ea580c); color: white; font-weight: 700; cursor: pointer; border: none; }
+        .note { font-size: 14px; color: var(--muted); }
+        .stack { display: grid; gap: 10px; }
+        code { color: #fde68a; word-break: break-all; }
+        .preview { padding: 14px; background: #0b1220; border-radius: 12px; border: 1px solid #1f2937; }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="panel grid">
+            <div>
+                <h1>${config.addonName} Setup</h1>
+                <p>Choose which languages to prefer, set the minimum acceptable resolution, and define how results should be ranked after language preference is applied.</p>
+            </div>
+            <div class="triple">
+                <div>
+                    <label for="language1">Language Priority 1</label>
+                    <select id="language1">
+                        <option value="">Off</option>
+                        <option value="ru">Russian</option>
+                        <option value="he">Hebrew</option>
+                        <option value="en">English</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="language2">Language Priority 2</label>
+                    <select id="language2">
+                        <option value="">Off</option>
+                        <option value="ru">Russian</option>
+                        <option value="he">Hebrew</option>
+                        <option value="en">English</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="language3">Language Priority 3</label>
+                    <select id="language3">
+                        <option value="">Off</option>
+                        <option value="ru">Russian</option>
+                        <option value="he">Hebrew</option>
+                        <option value="en">English</option>
+                    </select>
+                </div>
+            </div>
+            <div class="triple">
+                <div>
+                    <label for="minimumResolution">Minimum Resolution</label>
+                    <select id="minimumResolution">
+                        <option value="">Any</option>
+                        <option value="480p">480p</option>
+                        <option value="576p">576p</option>
+                        <option value="720p">720p</option>
+                        <option value="1080p">1080p</option>
+                        <option value="1440p">1440p</option>
+                        <option value="2160p">2160p</option>
+                        <option value="4k">4K</option>
+                    </select>
+                </div>
+            </div>
+            <div class="stack">
+                <h2>Sort Order</h2>
+                <p class="note">Language preference is always applied first. Then the addon compares these fields from top to bottom.</p>
+                <div class="triple">
+                    <div>
+                        <label for="sort1">Sort 1</label>
+                        <select id="sort1">
+                            <option value="hdr">HDR</option>
+                            <option value="resolution">Resolution</option>
+                            <option value="bitrate">Bitrate</option>
+                            <option value="size">Size</option>
+                            <option value="peers">Peers</option>
+                            <option value="seeders">Seeders</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="sort2">Sort 2</label>
+                        <select id="sort2">
+                            <option value="hdr">HDR</option>
+                            <option value="resolution">Resolution</option>
+                            <option value="bitrate">Bitrate</option>
+                            <option value="size">Size</option>
+                            <option value="peers">Peers</option>
+                            <option value="seeders">Seeders</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="sort3">Sort 3</label>
+                        <select id="sort3">
+                            <option value="hdr">HDR</option>
+                            <option value="resolution">Resolution</option>
+                            <option value="bitrate">Bitrate</option>
+                            <option value="size">Size</option>
+                            <option value="peers">Peers</option>
+                            <option value="seeders">Seeders</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="sort4">Sort 4</label>
+                        <select id="sort4">
+                            <option value="hdr">HDR</option>
+                            <option value="resolution">Resolution</option>
+                            <option value="bitrate">Bitrate</option>
+                            <option value="size">Size</option>
+                            <option value="peers">Peers</option>
+                            <option value="seeders">Seeders</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="sort5">Sort 5</label>
+                        <select id="sort5">
+                            <option value="hdr">HDR</option>
+                            <option value="resolution">Resolution</option>
+                            <option value="bitrate">Bitrate</option>
+                            <option value="size">Size</option>
+                            <option value="peers">Peers</option>
+                            <option value="seeders">Seeders</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="stack">
+                <button id="installButton" type="button">Generate Install URL</button>
+                <a id="openManifestLink" href="${manifestUrl}" style="display:block;color:#fde68a;text-decoration:none;">Open manifest URL</a>
+                <div class="note" id="configSummary">${summary}</div>
+                <div class="preview">
+                    <div class="note">Manifest URL</div>
+                    <code id="manifestUrl">${manifestUrl}</code>
+                </div>
+            </div>
+        </div>
+    </main>
+    <script>
+        const selectedLanguages = ${JSON.stringify(selectedLanguages)};
+        const selectedSortOrder = ${JSON.stringify(selectedSortOrder)};
+        const minimumResolution = ${JSON.stringify(runtimeConfig.minimumResolution || '')};
+
+        ['language1', 'language2', 'language3'].forEach((id, index) => {
+            const element = document.getElementById(id);
+            element.value = selectedLanguages[index] || '';
+        });
+
+        ['sort1', 'sort2', 'sort3', 'sort4', 'sort5'].forEach((id, index) => {
+            const element = document.getElementById(id);
+            element.value = selectedSortOrder[index] || 'hdr';
+        });
+
+        document.getElementById('minimumResolution').value = minimumResolution;
+
+        function encodeConfig(config) {
+            return btoa(JSON.stringify(config)).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
         }
-    ],
 
-    "behaviorHints": {
-        "p2p": true,
-        "configurable": false,
-        "adult": false,
-        "configurationRequired": false
-    },
+        function updateManifestUrl() {
+            const allowedLanguages = ['language1', 'language2', 'language3']
+                .map(id => document.getElementById(id).value)
+                .filter(Boolean)
+                .filter((value, index, array) => array.indexOf(value) === index);
 
-    "types": ["movie", "series"],
-    "idPrefixes": ["tt", "tmdb"],
+            const sortOrder = ['sort1', 'sort2', 'sort3', 'sort4', 'sort5']
+                .map(id => document.getElementById(id).value)
+                .filter(Boolean)
+                .filter((value, index, array) => array.indexOf(value) === index);
 
-    "catalogs": []
-};
+            const payload = {
+                allowedLanguages,
+                minimumResolution: document.getElementById('minimumResolution').value,
+                sortOrder
+            };
+
+            const encoded = encodeConfig(payload);
+            const manifestUrl = window.location.origin + '/' + encoded + '/manifest.json';
+            document.getElementById('manifestUrl').textContent = manifestUrl;
+            document.getElementById('openManifestLink').href = manifestUrl;
+            document.getElementById('configSummary').textContent =
+                'Language priority: ' + (allowedLanguages.join(' > ') || 'none') +
+                ' | Min resolution: ' + (payload.minimumResolution || 'any') +
+                ' | Sort: ' + (sortOrder.join(' > ') || 'default');
+        }
+
+        ['language1', 'language2', 'language3', 'sort1', 'sort2', 'sort3', 'sort4', 'sort5', 'minimumResolution']
+            .forEach(id => document.getElementById(id).addEventListener('change', updateManifestUrl));
+
+        document.getElementById('installButton').addEventListener('click', updateManifestUrl);
+    </script>
+</body>
+</html>`;
+}
+
+function sendConfigurePage(req, res, runtimeConfig, encodedConfig = '') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(renderConfigurePage(req, runtimeConfig, encodedConfig));
+}
+
+addon.get('/', (req, res) => {
+    res.redirect('/configure');
+});
+
+addon.get('/configure', (req, res) => {
+    sendConfigurePage(req, res, config.getRuntimeConfig());
+});
+
+addon.get('/:userConfig/configure', (req, res) => {
+    const userConfig = config.getUserConfigFromRequest(req.params.userConfig);
+    sendConfigurePage(req, res, config.getRuntimeConfig(userConfig), req.params.userConfig);
+});
 
 addon.get('/manifest.json', (req, res) => {
     console.log("Sending manifest.");
-    respond(res, manifest);
+    respond(res, buildManifest(config.getRuntimeConfig()));
+});
+
+addon.get('/:userConfig/manifest.json', (req, res) => {
+    const userConfig = config.getUserConfigFromRequest(req.params.userConfig);
+    console.log("Sending configured manifest.");
+    respond(res, buildManifest(config.getRuntimeConfig(userConfig)));
 });
 
 async function getStreamInfo(streamInfo, abortSignals) {
@@ -130,7 +374,7 @@ function partitionURL(list) {
     );
 }
 
-function processTorrentList(torrentList) {
+function processTorrentList(torrentList, runtimeConfig) {
     if (torrentList.length === 0) {
         return [];
     }
@@ -139,7 +383,7 @@ function processTorrentList(torrentList) {
     torrentList.forEach(torrent => {
         const infoHash = torrent.infoHash;
 
-        if (torrent.seeders < config.minimumSeeds) {
+        if (torrent.seeders < runtimeConfig.minimumSeeds) {
             return;
         }
 
@@ -147,7 +391,7 @@ function processTorrentList(torrentList) {
         if (duplicatesMap.has(infoHash)) {
             // If duplicate, update if the current torrent has higher seeders
             const existingTorrent = duplicatesMap.get(infoHash);
-            if (torrent.seeders > existingTorrent.seeders) {
+            if (helper.compareStreams(torrent, existingTorrent, runtimeConfig) < 0) {
                 duplicatesMap.set(infoHash, {
                     ...torrent,
                     sources: helper.unique([...existingTorrent.sources, ...torrent.sources]),
@@ -161,20 +405,105 @@ function processTorrentList(torrentList) {
     // Filter out torrents with the same infoHash
     const uniqueTorrents = [...duplicatesMap.values()];
 
-    // Sort the array by seeders in descending order
-    uniqueTorrents.sort((a, b) => b.seeders - a.seeders);
+    uniqueTorrents.sort((a, b) => helper.compareStreams(a, b, runtimeConfig));
     // Move the sources starting with 'dht' to the end of the list
     uniqueTorrents.forEach(torrent => {
         const dhtSources = torrent.sources.filter(source => source.startsWith('dht'));
         const nonDhtSources = torrent.sources.filter(source => !source.startsWith('dht'));
         torrent.sources = [...nonDhtSources, ...dhtSources];
     });
-    const slicedTorrents = uniqueTorrents.slice(0, config.maximumResults);
+    const slicedTorrents = uniqueTorrents.slice(0, runtimeConfig.maximumResults);
 
     return slicedTorrents;
 }
 
-function streamFromParsed(tor, parsedTorrent, streamInfo, cb) {
+function decorateStreamRankingFields(stream, runtimeConfig) {
+    const explicitLanguages = helper.normalizeLanguageList(stream.languages || []);
+    const providerLanguages = helper.normalizeLanguageList(stream.providerLanguages || []);
+    const sourceTitle = stream.releaseTitle || stream.title || '';
+    const detectedLanguages = helper.normalizeLanguageList([helper.findLanguage(sourceTitle, runtimeConfig.allowedLanguages)]);
+    const priorityLanguages = helper.languagePriorityCandidates(providerLanguages, explicitLanguages, detectedLanguages);
+
+    stream.languages = explicitLanguages;
+    stream.providerLanguages = providerLanguages;
+    stream.subtitleLanguages = helper.normalizeLanguageList(stream.subtitleLanguages || []);
+    stream.tags = helper.unique(stream.tags || []);
+    stream.hasLanguageTags = (explicitLanguages.length > 0 || providerLanguages.length > 0) ? 1 : 0;
+    stream.detectedLanguages = detectedLanguages;
+    stream.languageRank = helper.languagePreferenceIndex(sourceTitle, runtimeConfig.allowedLanguages, priorityLanguages);
+    stream.hdr = stream.hdr ?? (helper.hasHdr(stream.title || '') ? 1 : 0);
+    stream.resolution = stream.resolution ?? helper.resolutionRank(stream.title || '');
+    stream.bitrate = stream.bitrate ?? helper.findBitrate(stream.title || '');
+    stream.peers = stream.peers || 0;
+    stream.size = stream.size || 0;
+    stream.seeders = stream.seeders || 0;
+    stream.jackettDate = stream.jackettDate || 0;
+    return stream;
+}
+
+function buildStreamName(runtimeConfig, quality, languages, subtitleLanguages, tags, detectedLanguages = []) {
+    const lines = [runtimeConfig.addonName];
+    if (quality) {
+        lines.push(quality);
+    }
+
+    const metadata = [];
+    if (languages.length > 0) {
+        metadata.push(`Lang ${languages.join(',')}`);
+    } else if (detectedLanguages.length > 0) {
+        metadata.push(`Lang? ${detectedLanguages.join(',')}`);
+    }
+    if (subtitleLanguages.length > 0) {
+        metadata.push(`Subs ${subtitleLanguages.join(',')}`);
+    }
+    if (tags.length > 0) {
+        metadata.push(`Tags ${tags.join(',')}`);
+    }
+    if (metadata.length > 0) {
+        lines.push(metadata.join(' | '));
+    }
+
+    return lines.join('\n');
+}
+
+function buildStreamTitle(streamInfo, stream, releaseName) {
+    const baseTitle = streamInfo.name + ' ' + (streamInfo.season && streamInfo.episode ? ` ${helper.episodeTag(streamInfo.season, streamInfo.episode)}` : streamInfo.year);
+    const detailLines = [];
+
+    if (releaseName) {
+        detailLines.push(`Release: ${releaseName}`);
+    }
+
+    const rankParts = [];
+    if ((stream.languages || []).length > 0) {
+        rankParts.push(`Lang ${helper.displayLanguageList(stream.languages).join(',')}`);
+    } else if ((stream.providerLanguages || []).length > 0) {
+        rankParts.push(`Src Lang ${helper.displayLanguageList(stream.providerLanguages).join(',')}`);
+    } else if ((stream.detectedLanguages || []).length > 0) {
+        rankParts.push(`Lang? ${helper.displayLanguageList(stream.detectedLanguages).join(',')}`);
+    } else {
+        rankParts.push('No Lang Tag');
+    }
+
+    if (stream.hdr) {
+        rankParts.push('HDR');
+    }
+
+    if (stream.resolution) {
+        rankParts.push(`${stream.resolution}p`);
+    }
+
+    if (stream.bitrate) {
+        rankParts.push(`${stream.bitrate} kbps`);
+    }
+
+    detailLines.push(rankParts.join(' | '));
+    detailLines.push(`Peers ${stream.peers || 0} | Seeds ${stream.seeders || 0} | Size ${helper.toHomanReadable(stream.size || 0)} | ${stream.from}`);
+
+    return `${baseTitle}\r\n\r\n${detailLines.join('\r\n')}`;
+}
+
+function streamFromParsed(tor, parsedTorrent, streamInfo, runtimeConfig, cb) {
     const stream = {};
     const infoHash = parsedTorrent.infoHash.toLowerCase();
 
@@ -184,7 +513,7 @@ function streamFromParsed(tor, parsedTorrent, streamInfo, cb) {
         } else {
             let regEx = null;
             if (streamInfo.type === 'movie') {
-                regEx = new RegExp(`${streamInfo.name.split(' ').join('.*')}.*${!config.dontSearchByYear && streamInfo.year ? streamInfo.year : ''}.*`, 'i');
+                regEx = new RegExp(`${streamInfo.name.split(' ').join('.*')}.*${!runtimeConfig.dontSearchByYear && streamInfo.year ? streamInfo.year : ''}.*`, 'i');
             } else {
                 regEx = new RegExp(`${streamInfo.name.split(' ').join('.*')}.*${helper.episodeTag(streamInfo.season, streamInfo.episode)}.*`, 'i');
             }
@@ -203,12 +532,7 @@ function streamFromParsed(tor, parsedTorrent, streamInfo, cb) {
     } else {
         stream.fileIdx = null;
     }
-    let title = streamInfo.name + ' ' + (streamInfo.season && streamInfo.episode ? ` ${helper.episodeTag(streamInfo.season, streamInfo.episode)}` : streamInfo.year);
-    const subtitle = `👤 ${tor.seeders}/${tor.peers}  💾 ${helper.toHomanReadable(tor.size)} ⚙️ ${tor.from}`;
-
-    title += (title.indexOf('\n') > -1 ? '\r\n' : '\r\n\r\n') + subtitle;
-    const quality = helper.findQuality(tor.extraTag)
-
+    const quality = helper.findQuality(tor.extraTag);
     let trackers = [];
     if (global.TRACKERS) {
         trackers = helper.unique([].concat(parsedTorrent.announce).concat(global.TRACKERS));
@@ -223,20 +547,48 @@ function streamFromParsed(tor, parsedTorrent, streamInfo, cb) {
         }
     }
 
-    stream.name = config.addonName + "\n" + quality;
+    stream.languages = tor.languages || [];
+    stream.providerLanguages = tor.providerLanguages || [];
+    stream.subtitleLanguages = tor.subtitleLanguages || [];
+    stream.tags = tor.tags || [];
+    stream.name = buildStreamName(
+        runtimeConfig,
+        quality,
+        helper.displayLanguageList(stream.languages),
+        helper.displayLanguageList(stream.subtitleLanguages),
+        stream.tags,
+        helper.displayLanguageList(stream.detectedLanguages || [])
+    );
     stream.tag = quality
     stream.type = streamInfo.type;
     stream.infoHash = infoHash;
+    stream.releaseTitle = tor.title || '';
+    stream.from = tor.from;
     stream.sources = trackers.map(x => { return "tracker:" + x; }).concat(["dht:" + infoHash]);
-    stream.title = title;
     stream.seeders = tor.seeders;
+    stream.peers = tor.peers || 0;
+    stream.size = tor.size || 0;
+    stream.hdr = helper.hasHdr(tor.title) ? 1 : 0;
+    stream.resolution = helper.resolutionRank(tor.title);
+    stream.bitrate = helper.findBitrate(tor.title);
+    stream.jackettDate = tor.jackettDate || 0;
     stream.behaviorHints = {
         bingieGroup: "Jackett|" + infoHash,
     }
-    cb(stream);
+    const rankedStream = decorateStreamRankingFields(stream, runtimeConfig);
+    rankedStream.name = buildStreamName(
+        runtimeConfig,
+        quality,
+        helper.displayLanguageList(rankedStream.languages),
+        helper.displayLanguageList(rankedStream.subtitleLanguages),
+        rankedStream.tags,
+        helper.displayLanguageList(rankedStream.detectedLanguages || [])
+    );
+    rankedStream.title = buildStreamTitle(streamInfo, rankedStream, tor.title || '');
+    cb(rankedStream);
 }
 
-async function addResults(info, streams, source, abortSignals) {
+async function addResults(info, streams, source, abortSignals, runtimeConfig) {
 
     const [url, name] = source.split("||").length === 2 ? source.split("||") : [null, null];
     if (!url && !name) {
@@ -279,21 +631,42 @@ async function addResults(info, streams, source, abortSignals) {
             const newStream = {}
             const quality = helper.findQuality(torrent.title);
             newStream.fileIdx = torrent.fileIdx;
-            newStream.name = torrent.name.replace(name, config.addonName);
+            newStream.name = torrent.name.replace(name, runtimeConfig.addonName);
             newStream.tag = quality;
             newStream.type = info.type;
             newStream.infoHash = torrent.infoHash.toLowerCase();
+            newStream.releaseTitle = torrent.title || '';
+            newStream.from = name;
             newStream.sources = global.TRACKERS.map(x => { return "tracker:" + x; }).concat(["dht:" + torrent.infoHash]);
 
             helper.normalizeTitle(torrent, info);
-            newStream.title = torrent.title;
             newStream.seeders = torrent.seeders;
+            newStream.peers = torrent.peers || 0;
+            newStream.size = torrent.size || 0;
+            newStream.hdr = helper.hasHdr(torrent.title) ? 1 : 0;
+            newStream.resolution = helper.resolutionRank(torrent.title);
+            newStream.bitrate = helper.findBitrate(torrent.title);
+            newStream.languages = torrent.languages || [];
+            newStream.providerLanguages = torrent.providerLanguages || [];
+            newStream.subtitleLanguages = torrent.subtitleLanguages || [];
+            newStream.tags = torrent.tags || [];
+            newStream.jackettDate = torrent.jackettDate || 0;
 
             newStream.behaviorHints = {
                 bingieGroup: "Jackett|" + newStream.infoHash,
             }
 
-            streams.push(newStream);
+            const rankedStream = decorateStreamRankingFields(newStream, runtimeConfig);
+            rankedStream.name = buildStreamName(
+                runtimeConfig,
+                quality,
+                helper.displayLanguageList(rankedStream.languages),
+                helper.displayLanguageList(rankedStream.subtitleLanguages),
+                rankedStream.tags,
+                helper.displayLanguageList(rankedStream.detectedLanguages || [])
+            );
+            rankedStream.title = buildStreamTitle(info, rankedStream, torrent.title || '');
+            streams.push(rankedStream);
             config.debug && console.log('Adding addition source stream: ', torrent)
         })
     } catch (error) {
@@ -301,17 +674,23 @@ async function addResults(info, streams, source, abortSignals) {
     }
 }
 
-// stream response
-addon.get('/stream/:type/:id.json', async (req, res) => {
+async function handleStreamRequest(req, res, userConfig = {}) {
 
     if (!req.params.id)
         return respond(res, { streams: [] });
 
+    const runtimeConfig = config.getRuntimeConfig(userConfig);
     config.debug && console.log("Received request for :", req.params.type, req.params.id);
+    console.log(`R: ${req.params.id} / langs: ${runtimeConfig.allowedLanguages.join('>') || 'none'} / minRes: ${runtimeConfig.minimumResolution || 'any'} / sort: ${runtimeConfig.sortOrder.join('>')}`);
+    const cacheKey = `${req.params.id}:${JSON.stringify({
+        allowedLanguages: runtimeConfig.allowedLanguages,
+        minimumResolution: runtimeConfig.minimumResolution,
+        sortOrder: runtimeConfig.sortOrder,
+    })}`;
 
     // cache
-    if (config.cacheResultsTime && config.cacheResultsTime != 0 && !req.headers['no-cache']) {
-        const cached = getCacheVariable(req.params.id, config.cacheResultsTime);
+    if (runtimeConfig.cacheResultsTime && runtimeConfig.cacheResultsTime != 0 && !req.headers['no-cache']) {
+        const cached = getCacheVariable(cacheKey, runtimeConfig.cacheResultsTime);
         if (cached) {
             console.log("C: " + req.params.id + " cached.");
             return respond(res, {
@@ -357,9 +736,9 @@ addon.get('/stream/:type/:id.json', async (req, res) => {
         return respond(res, { streams: [] });
     }
 
-    if (config.additionalSources && streamInfo.db === 'tt') {
-        config.additionalSources.forEach(source => {
-            addResults(streamInfo, streams, source, abortSignals);
+    if (runtimeConfig.additionalSources && streamInfo.db === 'tt') {
+        runtimeConfig.additionalSources.forEach(source => {
+            addResults(streamInfo, streams, source, abortSignals, runtimeConfig);
         });
     }
 
@@ -371,7 +750,7 @@ addon.get('/stream/:type/:id.json', async (req, res) => {
 
     const intervalId = setInterval(() => {
         const elapsedTime = Date.now() - startTime;
-        if (!requestSent && ((elapsedTime >= config.responseTimeout) || (searchFinished && inProgressCount === 0 && asyncQueue.idle))) {
+        if (!requestSent && ((elapsedTime >= runtimeConfig.responseTimeout) || (searchFinished && inProgressCount === 0 && asyncQueue.idle()))) {
             requestSent = true;
             asyncQueue.kill();
             config.debug && console.log("There are " + abortSignals.length + " controllers to abort.");
@@ -380,15 +759,15 @@ addon.get('/stream/:type/:id.json', async (req, res) => {
             });
 
             clearInterval(intervalId);
-            const finalData = processTorrentList(streams);
+            const finalData = processTorrentList(streams, runtimeConfig);
             config.debug && console.log("Sliced & Sorted data ", finalData);
-            console.log(`A: ${req.params.id} / time: ${elapsedTime} / results: ${finalData.length} / timeout: ${(elapsedTime >= config.responseTimeout)} / search finished: ${searchFinished} / queue idle: ${asyncQueue.idle()} / pending downloads: ${inProgressCount} / discarded: ${(streams.length - finalData.length)}`);
+            console.log(`A: ${req.params.id} / time: ${elapsedTime} / results: ${finalData.length} / timeout: ${(elapsedTime >= runtimeConfig.responseTimeout)} / search finished: ${searchFinished} / queue idle: ${asyncQueue.idle()} / pending downloads: ${inProgressCount} / discarded: ${(streams.length - finalData.length)}`);
             if (finalData.length > 0) {
                 res.setHeader('Cache-Control', 'max-age=7200, stale-while-revalidate=14400, stale-if-error=604800, public');
                 // Set cache-related headers if "streams" contains data
-                if (config.cacheResultsTime && config.cacheResultsTime != 0) {
+                if (runtimeConfig.cacheResultsTime && runtimeConfig.cacheResultsTime != 0) {
                     config.debug && console.log("Caching results for ", req.params.id);
-                    setCacheVariable(req.params.id, finalData, config.cacheResultsTime)
+                    setCacheVariable(cacheKey, finalData, runtimeConfig.cacheResultsTime)
                 }
                 return respond(res, {
                     streams: finalData,
@@ -403,9 +782,9 @@ addon.get('/stream/:type/:id.json', async (req, res) => {
                 });
             }
         }
-        config.debug && console.log(`S: id: ${streamInfo.Id} / time pending: ${(config.responseTimeout - elapsedTime)} / search finished: ${searchFinished} / queue idle: ${asyncQueue.idle()} / pending downloads: ${inProgressCount} / processed streams: ${streams.length}`);
+        config.debug && console.log(`S: id: ${streamInfo.Id} / time pending: ${(runtimeConfig.responseTimeout - elapsedTime)} / search finished: ${searchFinished} / queue idle: ${asyncQueue.idle()} / pending downloads: ${inProgressCount} / processed streams: ${streams.length}`);
 
-    }, config.interval);
+    }, runtimeConfig.interval);
 
     const processMagnets = async (task) => {
         if (requestSent) {
@@ -414,7 +793,7 @@ addon.get('/stream/:type/:id.json', async (req, res) => {
         const uri = task.magneturl || task.link;
         config.debug && console.log("Parsing magnet :", uri);
         const parsedTorrent = parseTorrent(uri);
-        streamFromParsed(task, parsedTorrent, streamInfo, stream => {
+        streamFromParsed(task, parsedTorrent, streamInfo, runtimeConfig, stream => {
             streams.push(stream);
         });
     };
@@ -430,7 +809,7 @@ addon.get('/stream/:type/:id.json', async (req, res) => {
             abortSignals.push(controller)
             config.debug && console.log("Processing link: ", task.link);
             const response = await axios.get(task.link, {
-                timeout: config.responseTimeout, // we don't want to overdo it here and neither set something in config. Request should timeout anyway.
+                timeout: runtimeConfig.responseTimeout, // we don't want to overdo it here and neither set something in config. Request should timeout anyway.
                 maxRedirects: 0,
                 validateStatus: null,
                 signal: signal,
@@ -461,7 +840,7 @@ addon.get('/stream/:type/:id.json', async (req, res) => {
                 const responseBody = Buffer.from(response.data);
                 config.debug && console.log(`Processing torrent : ${task.link}.`);
                 const parsedTorrent = parseTorrent(responseBody);
-                streamFromParsed(task, parsedTorrent, streamInfo, stream => {
+                streamFromParsed(task, parsedTorrent, streamInfo, runtimeConfig, stream => {
                     streams.push(stream);
                 });
                 config.debug && console.log("Parsed torrent : ", task.link);
@@ -472,10 +851,10 @@ addon.get('/stream/:type/:id.json', async (req, res) => {
         inProgressCount--;
     };
 
-    const asyncQueue = async.queue(processLinks, config.downloadTorrentQueue);
+    const asyncQueue = async.queue(processLinks, runtimeConfig.downloadTorrentQueue);
 
 
-    jackettApi.search(streamInfo, abortSignals,
+    jackettApi.search(streamInfo, runtimeConfig, abortSignals,
         (tempResults) => {
             if (!requestSent && tempResults && tempResults.length > 0) {
                 const { magnets, links } = partitionURL(tempResults);
@@ -489,6 +868,15 @@ addon.get('/stream/:type/:id.json', async (req, res) => {
             searchFinished = true;
         }
     );
+}
+
+// stream response
+addon.get('/stream/:type/:id.json', async (req, res) => {
+    return handleStreamRequest(req, res);
+});
+
+addon.get('/:userConfig/stream/:type/:id.json', async (req, res) => {
+    return handleStreamRequest(req, res, config.getUserConfigFromRequest(req.params.userConfig));
 });
 
 const runAddon = async () => {
@@ -511,3 +899,4 @@ const runAddon = async () => {
 };
 
 runAddon();
+

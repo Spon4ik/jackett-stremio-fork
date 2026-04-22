@@ -44,6 +44,13 @@ const getIndexers = async (host, apiKey, abortSignals) => {
 		if (indexers && indexers.elements && indexers.elements[0] && indexers.elements[0].elements) {
 			indexers = indexers.elements[0].elements;
 			indexers.forEach((elem, index) => {
+				const languageElement = (elem.elements || []).find(child => child.name === 'language');
+				indexers[index].language = helper.normalizeLanguageValue(
+					languageElement && languageElement.elements && languageElement.elements[0]
+						? languageElement.elements[0].text
+						: ''
+				);
+
 				if (elem.elements[5].elements[3].elements) {
 					for (const cat of elem.elements[5].elements[3].elements) {
 						if (indexers[index].movie && indexers[index].series) {
@@ -76,7 +83,7 @@ const getIndexers = async (host, apiKey, abortSignals) => {
 	}
 };
 
-const search = async (query, abortSignals, cb, end) => {
+const search = async (query, runtimeConfig, abortSignals, cb, end) => {
 	const hostsAndApiKeys = config.jackett.hosts.split(',').map((host, i) => ({ host, apiKey: config.jackett.apiKeys.split(',')[i] }));
 	config.debug && console.log("Found " + hostsAndApiKeys.length + " Jacket servers.");
 
@@ -150,7 +157,8 @@ const search = async (query, abortSignals, cb, end) => {
 				const signal = controller.signal;
 
 				const url = host + 'api/v2.0/indexers/' + indexer.attributes.id + '/results/torznab/api?apikey=' + apiKey + searchQuery;
-				const response = await axios.get(url, {
+				const finalUrl = url + '&extended=1';
+				const response = await axios.get(finalUrl, {
 					timeout: config.jackett.readTimeout,
 					responseType: 'text',
 					signal: signal
@@ -161,7 +169,7 @@ const search = async (query, abortSignals, cb, end) => {
 					abortSignals.splice(index, 1); // Remove the controller from the array
 				}
 
-				config.debug && console.log(`Finished searching indexer ${indexer.attributes.id} with url ${url}`);
+				config.debug && console.log(`Finished searching indexer ${indexer.attributes.id} with url ${finalUrl}`);
 
 				if (!response.data) {
 					console.error(`Error ${response.err} when calling ${indexer.attributes.id}.`);
@@ -181,8 +189,19 @@ const search = async (query, abortSignals, cb, end) => {
 							const tempObj = {};
 
 							elem.elements.forEach(subElm => {
-								if (subElm.name == 'torznab:attr' && subElm.attributes && subElm.attributes.name && subElm.attributes.value)
-									tempObj[subElm.attributes.name] = subElm.attributes.value;
+								if (subElm.name == 'torznab:attr' && subElm.attributes && subElm.attributes.name && subElm.attributes.value) {
+									const attrName = subElm.attributes.name;
+									const attrValue = subElm.attributes.value;
+									if (Object.prototype.hasOwnProperty.call(tempObj, attrName)) {
+										if (Array.isArray(tempObj[attrName])) {
+											tempObj[attrName].push(attrValue);
+										} else {
+											tempObj[attrName] = [tempObj[attrName], attrValue];
+										}
+									} else {
+										tempObj[attrName] = attrValue;
+									}
+								}
 								else if (subElm.elements && subElm.elements.length)
 									tempObj[subElm.name] = subElm.elements[0].text;
 							});
@@ -205,11 +224,19 @@ const search = async (query, abortSignals, cb, end) => {
 									newObj[toIntElm] = parseInt(tempObj[toIntElm]);
 							});
 
-							if (newObj.seeders < config.minimumSeeds || newObj.size > config.maximumSize) {
+							if (newObj.seeders < runtimeConfig.minimumSeeds || newObj.size > runtimeConfig.maximumSize) {
 								return;
 							}
 
-							if (config.dontParseTorrentFiles && (!newObj.magneturl || (newObj.link && !newObj.link.startsWith("magnet:")))) {
+							if (!helper.passesMinimumResolution(newObj.title, runtimeConfig.minimumResolution)) {
+								return;
+							}
+
+							if (helper.containsRejectedKeyword(newObj.title, runtimeConfig.rejectKeywords)) {
+								return;
+							}
+
+							if (runtimeConfig.dontParseTorrentFiles && (!newObj.magneturl || (newObj.link && !newObj.link.startsWith("magnet:")))) {
 								return;
 							}
 
@@ -229,11 +256,22 @@ const search = async (query, abortSignals, cb, end) => {
 							if (tempObj.pubDate)
 								newObj.jackettDate = new Date(tempObj.pubDate).getTime();
 
+							newObj.languages = helper.normalizeLanguageList(Array.isArray(tempObj.language) ? tempObj.language : (tempObj.language ? [tempObj.language] : []));
+							newObj.providerLanguages = helper.normalizeLanguageList([
+								...(Array.isArray(tempObj.lang) ? tempObj.lang : (tempObj.lang ? [tempObj.lang] : [])),
+								indexer.language,
+							]);
+							newObj.subtitleLanguages = helper.normalizeLanguageList(Array.isArray(tempObj.subs) ? tempObj.subs : (tempObj.subs ? [tempObj.subs] : []));
+							newObj.tags = helper.unique(Array.isArray(tempObj.tag) ? tempObj.tag : (tempObj.tag ? [tempObj.tag] : []));
+							newObj.audio = Array.isArray(tempObj.audio) ? tempObj.audio.join(', ') : (tempObj.audio || '');
+							newObj.video = Array.isArray(tempObj.video) ? tempObj.video.join(', ') : (tempObj.video || '');
+							newObj.attrResolution = Array.isArray(tempObj.resolution) ? tempObj.resolution[0] : (tempObj.resolution || '');
+
 							newObj.from = indexer.attributes.id;
 
 							newObj.extraTag = helper.extraTag(newObj.title, query.name);
 
-							if (helper.insertIntoSortedArray(sortedReults, newObj, 'seeders', config.maximumResults)) {
+							if (helper.insertIntoSortedArray(sortedReults, newObj, 'seeders', runtimeConfig.maximumResults)) {
 								config.debug && console.log(newObj);
 								tempResults.push(newObj);
 							}

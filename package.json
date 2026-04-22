@@ -1,25 +1,32 @@
 {
-  "name": "jackett-stremio",
-  "version": "1.1.7",
-  "description": "Stremio Add-on to get torrent results from Jackett",
+  "name": "jackett-stremio-fork",
+  "version": "1.1.8",
+  "description": "Focused Stremio add-on for self-hosted Jackett with local filtering",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "node --test",
+    "docker:build": "docker build -t jackett-stremio-fork:local .",
+    "docker:run": "docker run --rm -p 7000:7000 --env-file .env jackett-stremio-fork:local",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker logs --tail 200 jackett-stremio"
   },
   "license": "MIT",
   "keywords": [
     "Stremio",
     "Jackett",
     "torrents",
-    "Stremio-Addon"
+    "Stremio-Addon",
+    "self-hosted"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/tsaridas/jackett-stremio.git"
+    "url": "https://github.com/your-user/jackett-stremio-fork.git"
   },
   "bugs": {
-    "url": "https://github.com/tsaridas/jackett-stremio/issues"
+    "url": "https://github.com/your-user/jackett-stremio-fork/issues"
   },
   "dependencies": {
     "abort-controller": "^3.0.0",
@@ -33,6 +40,7 @@
     "xml-js": "^1.6.11"
   },
   "devDependencies": {
+    "eslint": "^8.57.1",
     "eslint-plugin-node": "^11.1.0"
   },
   "engines": {

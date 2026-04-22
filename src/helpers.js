@@ -1,5 +1,36 @@
 const videoNameParser = require('video-name-parser');
 
+const LANGUAGE_PATTERNS = {
+    ru: [/\brus(?:sian)?\b/i, /\bru\b/i, /\bрус(?:ский)?\b/i],
+    he: [/\bheb(?:rew)?\b/i, /\bhe\b/i, /עברית/i],
+    en: [/\beng(?:lish)?\b/i, /\ben\b/i],
+};
+
+const RESOLUTION_RANKS = {
+    '480p': 480,
+    '576p': 576,
+    '720p': 720,
+    '1080p': 1080,
+    '1440p': 1440,
+    '2160p': 2160,
+    '4k': 2160,
+};
+
+const LANGUAGE_ALIASES = {
+    russian: 'ru',
+    hebrew: 'he',
+    english: 'en',
+    israeli: 'he',
+};
+
+const LANGUAGE_LABELS = {
+    ru: 'RU',
+    he: 'HE',
+    en: 'EN',
+};
+
+const SORT_FIELDS = ['hdr', 'resolution', 'bitrate', 'size', 'peers', 'seeders'];
+
 const helper = {
     unique: (array) => {
         return Array.from(new Set(array));
@@ -69,6 +100,220 @@ const helper = {
         }
         return quality;
 
+    },
+
+    findResolution: (tag) => {
+        const match = tag.match(/\b(2160p|1440p|1080p|720p|576p|480p|4k)\b/i);
+        return match ? match[1].toLowerCase() : "";
+    },
+
+    resolutionRank: (tag) => {
+        const resolution = helper.findResolution(tag);
+        return RESOLUTION_RANKS[resolution] || 0;
+    },
+
+    passesMinimumResolution: (tag, minimumResolution) => {
+        if (!minimumResolution) {
+            return true;
+        }
+
+        const configuredRank = RESOLUTION_RANKS[minimumResolution];
+        if (!configuredRank) {
+            return true;
+        }
+
+        const foundResolution = helper.findResolution(tag);
+        const foundRank = RESOLUTION_RANKS[foundResolution];
+        if (!foundRank) {
+            return false;
+        }
+
+        return foundRank >= configuredRank;
+    },
+
+    matchesAllowedLanguages: (tag, allowedLanguages) => {
+        if (!allowedLanguages || allowedLanguages.length === 0) {
+            return true;
+        }
+
+        return allowedLanguages.some(language => {
+            const normalizedLanguage = LANGUAGE_ALIASES[language] || language;
+            const patterns = LANGUAGE_PATTERNS[normalizedLanguage];
+            if (!patterns) {
+                return false;
+            }
+
+            return patterns.some(pattern => pattern.test(tag));
+        });
+    },
+
+    findLanguage: (tag, allowedLanguages = []) => {
+        const candidateLanguages = allowedLanguages.length > 0 ? allowedLanguages : Object.keys(LANGUAGE_PATTERNS);
+
+        for (const language of candidateLanguages) {
+            const normalizedLanguage = LANGUAGE_ALIASES[language] || language;
+            const patterns = LANGUAGE_PATTERNS[normalizedLanguage];
+
+            if (patterns && patterns.some(pattern => pattern.test(tag))) {
+                return normalizedLanguage;
+            }
+        }
+
+        return '';
+    },
+
+    normalizeLanguageValue: (value) => {
+        if (!value) {
+            return '';
+        }
+
+        const normalizedValue = String(value).trim().toLowerCase();
+        const baseLanguage = normalizedValue.split(/[-_]/)[0];
+
+        if (LANGUAGE_ALIASES[normalizedValue]) {
+            return LANGUAGE_ALIASES[normalizedValue];
+        }
+
+        if (LANGUAGE_ALIASES[baseLanguage]) {
+            return LANGUAGE_ALIASES[baseLanguage];
+        }
+
+        if (LANGUAGE_PATTERNS[normalizedValue]) {
+            return normalizedValue;
+        }
+
+        if (LANGUAGE_PATTERNS[baseLanguage]) {
+            return baseLanguage;
+        }
+
+        for (const [language, patterns] of Object.entries(LANGUAGE_PATTERNS)) {
+            if (patterns.some(pattern => pattern.test(normalizedValue))) {
+                return language;
+            }
+        }
+
+        return normalizedValue;
+    },
+
+    normalizeLanguageList: (values = []) => {
+        return helper.unique(
+            values
+                .flatMap(value => String(value).split(','))
+                .map(value => helper.normalizeLanguageValue(value))
+                .filter(Boolean)
+        );
+    },
+
+    displayLanguageList: (values = []) => {
+        return helper.normalizeLanguageList(values)
+            .map(language => LANGUAGE_LABELS[language] || language.toUpperCase());
+    },
+
+    languagePreferenceIndex: (tag, preferredLanguages, explicitLanguages = []) => {
+        if (!preferredLanguages || preferredLanguages.length === 0) {
+            return Number.MAX_SAFE_INTEGER;
+        }
+
+        const normalizedExplicitLanguages = helper.normalizeLanguageList(explicitLanguages);
+        const candidateLanguages = normalizedExplicitLanguages.length > 0
+            ? normalizedExplicitLanguages
+            : [helper.findLanguage(tag, preferredLanguages)].filter(Boolean);
+
+        if (candidateLanguages.length === 0) {
+            return Number.MAX_SAFE_INTEGER;
+        }
+
+        const indexes = candidateLanguages
+            .map(foundLanguage => preferredLanguages.findIndex(language => (LANGUAGE_ALIASES[language] || language) === foundLanguage))
+            .filter(index => index !== -1);
+
+        return indexes.length > 0 ? Math.min(...indexes) : Number.MAX_SAFE_INTEGER;
+    },
+
+    languagePriorityCandidates: (providerLanguages = [], explicitLanguages = [], detectedLanguages = []) => {
+        return helper.unique([
+            ...helper.normalizeLanguageList(providerLanguages),
+            ...helper.normalizeLanguageList(explicitLanguages),
+            ...helper.normalizeLanguageList(detectedLanguages),
+        ]);
+    },
+
+    hasHdr: (tag) => {
+        return /\b(?:hdr10\+?|hdr|dolby[ .-]?vision|dv)\b/i.test(tag);
+    },
+
+    findBitrate: (tag) => {
+        const match = tag.match(/\b(\d+(?:\.\d+)?)\s*(gbps|gbit|gib\/s|gb\/s|mbps|mbit|mib\/s|mb\/s|kbps|kbit|kib\/s|kb\/s)\b/i);
+        if (!match) {
+            return 0;
+        }
+
+        const value = parseFloat(match[1]);
+        const unit = match[2].toLowerCase();
+
+        if (unit.startsWith('g')) {
+            return value * 1000 * 1000;
+        }
+
+        if (unit.startsWith('m')) {
+            return value * 1000;
+        }
+
+        return value;
+    },
+
+    normalizeSortOrder: (sortOrder) => {
+        if (!Array.isArray(sortOrder) || sortOrder.length === 0) {
+            return ['hdr', 'resolution', 'bitrate', 'size', 'peers'];
+        }
+
+        const uniqueSorts = [];
+        sortOrder.forEach(sortField => {
+            if (SORT_FIELDS.includes(sortField) && !uniqueSorts.includes(sortField)) {
+                uniqueSorts.push(sortField);
+            }
+        });
+
+        return uniqueSorts.length > 0 ? uniqueSorts : ['hdr', 'resolution', 'bitrate', 'size', 'peers'];
+    },
+
+    compareStreams: (left, right, runtimeConfig) => {
+        const leftHasLanguageTags = left.hasLanguageTags ?? 0;
+        const rightHasLanguageTags = right.hasLanguageTags ?? 0;
+        if (leftHasLanguageTags !== rightHasLanguageTags) {
+            return rightHasLanguageTags - leftHasLanguageTags;
+        }
+
+        const leftLanguageRank = left.languageRank ?? Number.MAX_SAFE_INTEGER;
+        const rightLanguageRank = right.languageRank ?? Number.MAX_SAFE_INTEGER;
+        if (leftLanguageRank !== rightLanguageRank) {
+            return leftLanguageRank - rightLanguageRank;
+        }
+
+        const sortOrder = helper.normalizeSortOrder(runtimeConfig.sortOrder);
+        for (const sortField of sortOrder) {
+            const leftValue = left[sortField] ?? 0;
+            const rightValue = right[sortField] ?? 0;
+
+            if (leftValue !== rightValue) {
+                return rightValue - leftValue;
+            }
+        }
+
+        if ((left.seeders ?? 0) !== (right.seeders ?? 0)) {
+            return (right.seeders ?? 0) - (left.seeders ?? 0);
+        }
+
+        return (right.jackettDate ?? 0) - (left.jackettDate ?? 0);
+    },
+
+    containsRejectedKeyword: (tag, rejectKeywords) => {
+        if (!rejectKeywords || rejectKeywords.length === 0) {
+            return false;
+        }
+
+        const lowerTag = tag.toLowerCase();
+        return rejectKeywords.some(keyword => lowerTag.includes(keyword));
     },
 
     normalizeTitle: (torrent, info) => {
