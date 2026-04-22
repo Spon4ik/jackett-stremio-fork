@@ -20,6 +20,17 @@ test('matchesAllowedLanguages supports short codes and full language names', () 
   assert.equal(helper.matchesAllowedLanguages('Movie.2024.FRENCH.1080p', ['ru', 'he']), false);
 });
 
+test('passesLanguageFilter rejects provider languages outside the allowed list', () => {
+  assert.equal(helper.passesLanguageFilter('Movie.2024.1080p', ['ru', 'he'], ['en-US']), false);
+  assert.equal(helper.passesLanguageFilter('Movie.2024.1080p', ['ru', 'he'], ['he-IL']), true);
+});
+
+test('passesLanguageFilter falls back to explicit and detected languages when provider language is absent', () => {
+  assert.equal(helper.passesLanguageFilter('Movie.2024.1080p', ['ru', 'he'], [], ['ru']), true);
+  assert.equal(helper.passesLanguageFilter('Movie.2024.ENGLISH.1080p', ['ru', 'he'], [], []), false);
+  assert.equal(helper.passesLanguageFilter('Movie.2024.1080p', ['ru', 'he'], [], []), true);
+});
+
 test('normalizeLanguageValue supports locale-style Jackett language codes', () => {
   assert.equal(helper.normalizeLanguageValue('ru-RU'), 'ru');
   assert.equal(helper.normalizeLanguageValue('he-IL'), 'he');

@@ -267,6 +267,10 @@ const search = async (query, runtimeConfig, abortSignals, cb, end) => {
 							newObj.video = Array.isArray(tempObj.video) ? tempObj.video.join(', ') : (tempObj.video || '');
 							newObj.attrResolution = Array.isArray(tempObj.resolution) ? tempObj.resolution[0] : (tempObj.resolution || '');
 
+							if (!helper.passesLanguageFilter(newObj.title, runtimeConfig.allowedLanguages, newObj.providerLanguages, newObj.languages)) {
+								return;
+							}
+
 							newObj.from = indexer.attributes.id;
 
 							newObj.extraTag = helper.extraTag(newObj.title, query.name);

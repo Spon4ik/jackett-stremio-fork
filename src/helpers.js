@@ -204,6 +204,43 @@ const helper = {
         );
     },
 
+    hasMatchingLanguage: (values = [], allowedLanguages = []) => {
+        if (!allowedLanguages || allowedLanguages.length === 0) {
+            return true;
+        }
+
+        const normalizedValues = helper.normalizeLanguageList(values);
+        if (normalizedValues.length === 0) {
+            return false;
+        }
+
+        const normalizedAllowedLanguages = helper.normalizeLanguageList(allowedLanguages);
+        return normalizedValues.some(language => normalizedAllowedLanguages.includes(language));
+    },
+
+    passesLanguageFilter: (tag, allowedLanguages = [], providerLanguages = [], explicitLanguages = []) => {
+        if (!allowedLanguages || allowedLanguages.length === 0) {
+            return true;
+        }
+
+        const normalizedProviderLanguages = helper.normalizeLanguageList(providerLanguages);
+        if (normalizedProviderLanguages.length > 0) {
+            return helper.hasMatchingLanguage(normalizedProviderLanguages, allowedLanguages);
+        }
+
+        const normalizedExplicitLanguages = helper.normalizeLanguageList(explicitLanguages);
+        if (normalizedExplicitLanguages.length > 0) {
+            return helper.hasMatchingLanguage(normalizedExplicitLanguages, allowedLanguages);
+        }
+
+        const detectedLanguage = helper.findLanguage(tag, Object.keys(LANGUAGE_PATTERNS));
+        if (detectedLanguage) {
+            return helper.hasMatchingLanguage([detectedLanguage], allowedLanguages);
+        }
+
+        return true;
+    },
+
     displayLanguageList: (values = []) => {
         return helper.normalizeLanguageList(values)
             .map(language => LANGUAGE_LABELS[language] || language.toUpperCase());

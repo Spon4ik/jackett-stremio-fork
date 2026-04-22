@@ -441,7 +441,7 @@ function decorateStreamRankingFields(stream, runtimeConfig) {
     return stream;
 }
 
-function buildStreamName(runtimeConfig, quality, languages, subtitleLanguages, tags, detectedLanguages = []) {
+function buildStreamName(runtimeConfig, quality, languages, providerLanguages, subtitleLanguages, tags, detectedLanguages = []) {
     const lines = [runtimeConfig.addonName];
     if (quality) {
         lines.push(quality);
@@ -450,6 +450,8 @@ function buildStreamName(runtimeConfig, quality, languages, subtitleLanguages, t
     const metadata = [];
     if (languages.length > 0) {
         metadata.push(`Lang ${languages.join(',')}`);
+    } else if (providerLanguages.length > 0) {
+        metadata.push(`Src Lang ${providerLanguages.join(',')}`);
     } else if (detectedLanguages.length > 0) {
         metadata.push(`Lang? ${detectedLanguages.join(',')}`);
     }
@@ -555,6 +557,7 @@ function streamFromParsed(tor, parsedTorrent, streamInfo, runtimeConfig, cb) {
         runtimeConfig,
         quality,
         helper.displayLanguageList(stream.languages),
+        helper.displayLanguageList(stream.providerLanguages),
         helper.displayLanguageList(stream.subtitleLanguages),
         stream.tags,
         helper.displayLanguageList(stream.detectedLanguages || [])
@@ -580,6 +583,7 @@ function streamFromParsed(tor, parsedTorrent, streamInfo, runtimeConfig, cb) {
         runtimeConfig,
         quality,
         helper.displayLanguageList(rankedStream.languages),
+        helper.displayLanguageList(rankedStream.providerLanguages),
         helper.displayLanguageList(rankedStream.subtitleLanguages),
         rankedStream.tags,
         helper.displayLanguageList(rankedStream.detectedLanguages || [])
@@ -661,6 +665,7 @@ async function addResults(info, streams, source, abortSignals, runtimeConfig) {
                 runtimeConfig,
                 quality,
                 helper.displayLanguageList(rankedStream.languages),
+                helper.displayLanguageList(rankedStream.providerLanguages),
                 helper.displayLanguageList(rankedStream.subtitleLanguages),
                 rankedStream.tags,
                 helper.displayLanguageList(rankedStream.detectedLanguages || [])
