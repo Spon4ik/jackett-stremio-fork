@@ -30,6 +30,39 @@ const LANGUAGE_LABELS = {
 };
 
 const SORT_FIELDS = ['hdr', 'resolution', 'bitrate', 'size', 'peers', 'seeders'];
+const TITLE_STOP_WORDS = ['a', 'an', 'the'];
+const RELEASE_WORDS = [
+    'amzn', 'atvp', 'avc', 'bd', 'bdrip', 'bluray', 'dl', 'dldub', 'dlrip',
+    'dvd', 'dvdrip', 'hdtv', 'hdrezka', 'hevc', 'internal', 'lostfilm', 'proper',
+    'repack', 'rg', 'rus', 'sub', 'subs', 'truehd', 'web', 'webdl', 'webrip',
+    'x264', 'x265', 'xvid'
+];
+
+function numberInRange(value, start, end) {
+    const normalizedValue = parseInt(value, 10);
+    const normalizedStart = parseInt(start, 10);
+    const normalizedEnd = end === undefined || end === null ? normalizedStart : parseInt(end, 10);
+
+    if (Number.isNaN(normalizedValue) || Number.isNaN(normalizedStart) || Number.isNaN(normalizedEnd)) {
+        return false;
+    }
+
+    return normalizedValue >= Math.min(normalizedStart, normalizedEnd)
+        && normalizedValue <= Math.max(normalizedStart, normalizedEnd);
+}
+
+function matchesEpisodeRegex(title, season, episode, regex) {
+    let match = regex.exec(title);
+    while (match) {
+        if (parseInt(match[1], 10) === parseInt(season, 10) && numberInRange(episode, match[2], match[3])) {
+            return true;
+        }
+
+        match = regex.exec(title);
+    }
+
+    return false;
+}
 
 const helper = {
     unique: (array) => {
@@ -85,6 +118,97 @@ const helper = {
         name = name.replace(/'/g, '');
         name = name.replace(/\\\\/g, '\\').replace(/\\\\'|\\'|\\\\"|\\"/g, '');
         return name;
+    },
+
+    normalizeMatchText: (value) => {
+        return helper.simpleName(String(value || ''))
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    },
+
+    matchTokens: (value) => {
+        return helper.normalizeMatchText(value)
+            .split(' ')
+            .filter(token => token.length > 0);
+    },
+
+    requestedTitleTokens: (value) => {
+        return helper.matchTokens(value)
+            .filter(token => !TITLE_STOP_WORDS.includes(token));
+    },
+
+    containsMatchTokens: (value, tokens) => {
+        if (!tokens || tokens.length === 0) {
+            return true;
+        }
+
+        const valueTokens = helper.matchTokens(value);
+        return tokens.every(token => valueTokens.includes(token));
+    },
+
+    hasMeaningfulLatinTitleCandidate: (value) => {
+        const latinSegments = String(value || '').match(/[A-Za-z0-9][A-Za-z0-9 .'-]*/g) || [];
+        return latinSegments.some(segment => {
+            const tokens = helper.matchTokens(segment)
+                .filter(token => !TITLE_STOP_WORDS.includes(token))
+                .filter(token => !RELEASE_WORDS.includes(token))
+                .filter(token => !/^\d{3,4}p$/.test(token))
+                .filter(token => !/^\d{4}$/.test(token));
+
+            return tokens.length > 0;
+        });
+    },
+
+    titleBeforeEpisodeTag: (title) => {
+        return String(title || '').split(/\bS\s*0*\d{1,2}\s*E\s*0*\d{1,3}|\b0*\d{1,2}\s*x\s*0*\d{1,3}/i)[0];
+    },
+
+    titleMatchesRequestedName: (title, requestedName) => {
+        const requestedTokens = helper.requestedTitleTokens(requestedName);
+        if (requestedTokens.length === 0 || helper.containsMatchTokens(title, requestedTokens)) {
+            return true;
+        }
+
+        const titleHead = helper.titleBeforeEpisodeTag(title);
+        return !helper.hasMeaningfulLatinTitleCandidate(titleHead);
+    },
+
+    titleMatchesRequestedEpisode: (title, season, episode) => {
+        if (!season || !episode) {
+            return true;
+        }
+
+        const normalizedTitle = String(title || '');
+        const requestedSeason = parseInt(season, 10);
+        const requestedEpisode = parseInt(episode, 10);
+
+        if (Number.isNaN(requestedSeason) || Number.isNaN(requestedEpisode)) {
+            return true;
+        }
+
+        const sxxexxRegex = /\bS\s*0*(\d{1,2})\s*E\s*0*(\d{1,3})(?:\s*(?:-|–|—|to)\s*(?:E\s*)?0*(\d{1,3}))?\b/gi;
+        if (matchesEpisodeRegex(normalizedTitle, requestedSeason, requestedEpisode, sxxexxRegex)) {
+            return true;
+        }
+
+        const xEpisodeRegex = /\b0*(\d{1,2})\s*x\s*0*(\d{1,3})(?:\s*(?:-|–|—|to)\s*(?:x)?0*(\d{1,3}))?\b/gi;
+        if (matchesEpisodeRegex(normalizedTitle, requestedSeason, requestedEpisode, xEpisodeRegex)) {
+            return true;
+        }
+
+        const wordEpisodeRegex = /\b(?:season|сезон)\s*0*(\d{1,2}).{0,50}?\b(?:episode|episodes|ep|серия|серии|серий)\s*0*(\d{1,3})(?:\s*(?:-|–|—|to)\s*0*(\d{1,3}))?/gi;
+        return matchesEpisodeRegex(normalizedTitle, requestedSeason, requestedEpisode, wordEpisodeRegex);
+    },
+
+    titleMatchesRequestedContent: (title, query) => {
+        if (!query || query.type !== 'series' || !query.season || !query.episode) {
+            return true;
+        }
+
+        return helper.titleMatchesRequestedEpisode(title, query.season, query.episode)
+            && helper.titleMatchesRequestedName(title, query.name);
     },
 
     findQuality: (tag) => {

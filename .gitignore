@@ -1,4 +1,7 @@
 node_modules
+.env
+run.log
+run-*.log
 *.swp
 .git
 beamup.json

@@ -28,12 +28,35 @@ function getBaseUrl(req, encodedConfig = '') {
     return `${req.protocol}://${req.get('host')}${prefix}`;
 }
 
+function buildConfiguredAddonName(runtimeConfig) {
+    const parts = [];
+    if (runtimeConfig.allowedLanguages && runtimeConfig.allowedLanguages.length > 0) {
+        parts.push(`lang:${runtimeConfig.allowedLanguages.join('>')}`);
+    }
+
+    if (runtimeConfig.minimumResolution) {
+        parts.push(`min:${runtimeConfig.minimumResolution}`);
+    }
+
+    if (runtimeConfig.minimumSeeds > 0) {
+        parts.push(`seeds:${runtimeConfig.minimumSeeds}`);
+    }
+
+    if (runtimeConfig.maximumSize > 0 && runtimeConfig.maximumSizeInput) {
+        parts.push(`max:${runtimeConfig.maximumSizeInput}`);
+    }
+
+    return parts.length > 0
+        ? `${runtimeConfig.addonName} [${parts.join(' | ')}]`
+        : runtimeConfig.addonName;
+}
+
 function buildManifest(runtimeConfig) {
     return {
         "id": "org.stremio.jackett",
         "version": version,
 
-        "name": runtimeConfig.addonName,
+        "name": buildConfiguredAddonName(runtimeConfig),
         "description": "Stremio Add-on to get torrent results from Jackett.",
 
         "icon": "https://svgur.com/i/12Ss.svg",
@@ -71,7 +94,7 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
     const manifestUrl = `${getBaseUrl(req, encodedConfig)}/manifest.json`;
     const selectedLanguages = runtimeConfig.allowedLanguages.length > 0 ? runtimeConfig.allowedLanguages : config.supportedLanguages;
     const selectedSortOrder = helper.normalizeSortOrder(runtimeConfig.sortOrder);
-    const summary = `Language priority: ${selectedLanguages.join(' > ') || 'none'} | Min resolution: ${runtimeConfig.minimumResolution || 'any'} | Sort: ${selectedSortOrder.join(' > ')}`;
+    const summary = `Language priority: ${selectedLanguages.join(' > ') || 'none'} | Min resolution: ${runtimeConfig.minimumResolution || 'any'} | Min seeds: ${runtimeConfig.minimumSeeds > 0 ? runtimeConfig.minimumSeeds : 'ignored'} | Max size: ${runtimeConfig.maximumSize > 0 && runtimeConfig.maximumSizeInput ? runtimeConfig.maximumSizeInput : 'ignored'} | Sort: ${selectedSortOrder.join(' > ')}`;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -147,6 +170,14 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
                         <option value="2160p">2160p</option>
                         <option value="4k">4K</option>
                     </select>
+                </div>
+                <div>
+                    <label for="minimumSeeds">Minimum Seeds</label>
+                    <input id="minimumSeeds" type="number" min="0" step="1" placeholder="Ignored">
+                </div>
+                <div>
+                    <label for="maximumSize">Maximum Size</label>
+                    <input id="maximumSize" type="text" placeholder="Ignored (e.g. 10GB)">
                 </div>
             </div>
             <div class="stack">
@@ -225,6 +256,8 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
         const selectedLanguages = ${JSON.stringify(selectedLanguages)};
         const selectedSortOrder = ${JSON.stringify(selectedSortOrder)};
         const minimumResolution = ${JSON.stringify(runtimeConfig.minimumResolution || '')};
+        const minimumSeeds = ${JSON.stringify(runtimeConfig.minimumSeeds > 0 ? String(runtimeConfig.minimumSeeds) : '')};
+        const maximumSize = ${JSON.stringify(runtimeConfig.maximumSize > 0 && runtimeConfig.maximumSizeInput ? runtimeConfig.maximumSizeInput : '')};
 
         ['language1', 'language2', 'language3'].forEach((id, index) => {
             const element = document.getElementById(id);
@@ -237,6 +270,8 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
         });
 
         document.getElementById('minimumResolution').value = minimumResolution;
+        document.getElementById('minimumSeeds').value = minimumSeeds;
+        document.getElementById('maximumSize').value = maximumSize;
 
         function encodeConfig(config) {
             return btoa(JSON.stringify(config)).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
@@ -256,6 +291,8 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
             const payload = {
                 allowedLanguages,
                 minimumResolution: document.getElementById('minimumResolution').value,
+                minimumSeeds: document.getElementById('minimumSeeds').value,
+                maximumSize: document.getElementById('maximumSize').value.trim(),
                 sortOrder
             };
 
@@ -266,10 +303,12 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
             document.getElementById('configSummary').textContent =
                 'Language priority: ' + (allowedLanguages.join(' > ') || 'none') +
                 ' | Min resolution: ' + (payload.minimumResolution || 'any') +
+                ' | Min seeds: ' + (payload.minimumSeeds || 'ignored') +
+                ' | Max size: ' + (payload.maximumSize || 'ignored') +
                 ' | Sort: ' + (sortOrder.join(' > ') || 'default');
         }
 
-        ['language1', 'language2', 'language3', 'sort1', 'sort2', 'sort3', 'sort4', 'sort5', 'minimumResolution']
+        ['language1', 'language2', 'language3', 'sort1', 'sort2', 'sort3', 'sort4', 'sort5', 'minimumResolution', 'minimumSeeds', 'maximumSize']
             .forEach(id => document.getElementById(id).addEventListener('change', updateManifestUrl));
 
         document.getElementById('installButton').addEventListener('click', updateManifestUrl);
@@ -447,22 +486,18 @@ function buildStreamName(runtimeConfig, quality, languages, providerLanguages, s
         lines.push(quality);
     }
 
-    const metadata = [];
     if (languages.length > 0) {
-        metadata.push(`Lang ${languages.join(',')}`);
+        lines.push(`Lang ${languages.join(',')}`);
     } else if (providerLanguages.length > 0) {
-        metadata.push(`Src Lang ${providerLanguages.join(',')}`);
+        lines.push(`Src Lang ${providerLanguages.join(',')}`);
     } else if (detectedLanguages.length > 0) {
-        metadata.push(`Lang? ${detectedLanguages.join(',')}`);
+        lines.push(`Lang? ${detectedLanguages.join(',')}`);
     }
     if (subtitleLanguages.length > 0) {
-        metadata.push(`Subs ${subtitleLanguages.join(',')}`);
+        lines.push(`Subs ${subtitleLanguages.join(',')}`);
     }
     if (tags.length > 0) {
-        metadata.push(`Tags ${tags.join(',')}`);
-    }
-    if (metadata.length > 0) {
-        lines.push(metadata.join(' | '));
+        lines.push(`Tags ${tags.join(',')}`);
     }
 
     return lines.join('\n');
@@ -476,31 +511,32 @@ function buildStreamTitle(streamInfo, stream, releaseName) {
         detailLines.push(`Release: ${releaseName}`);
     }
 
-    const rankParts = [];
     if ((stream.languages || []).length > 0) {
-        rankParts.push(`Lang ${helper.displayLanguageList(stream.languages).join(',')}`);
+        detailLines.push(`Lang ${helper.displayLanguageList(stream.languages).join(',')}`);
     } else if ((stream.providerLanguages || []).length > 0) {
-        rankParts.push(`Src Lang ${helper.displayLanguageList(stream.providerLanguages).join(',')}`);
+        detailLines.push(`Src Lang ${helper.displayLanguageList(stream.providerLanguages).join(',')}`);
     } else if ((stream.detectedLanguages || []).length > 0) {
-        rankParts.push(`Lang? ${helper.displayLanguageList(stream.detectedLanguages).join(',')}`);
+        detailLines.push(`Lang? ${helper.displayLanguageList(stream.detectedLanguages).join(',')}`);
     } else {
-        rankParts.push('No Lang Tag');
+        detailLines.push('No Lang Tag');
     }
 
     if (stream.hdr) {
-        rankParts.push('HDR');
+        detailLines.push('HDR');
     }
 
     if (stream.resolution) {
-        rankParts.push(`${stream.resolution}p`);
+        detailLines.push(`${stream.resolution}p`);
     }
 
     if (stream.bitrate) {
-        rankParts.push(`${stream.bitrate} kbps`);
+        detailLines.push(`${stream.bitrate} kbps`);
     }
 
-    detailLines.push(rankParts.join(' | '));
-    detailLines.push(`Peers ${stream.peers || 0} | Seeds ${stream.seeders || 0} | Size ${helper.toHomanReadable(stream.size || 0)} | ${stream.from}`);
+    detailLines.push(`Peers ${stream.peers || 0}`);
+    detailLines.push(`Seeds ${stream.seeders || 0}`);
+    detailLines.push(`Size ${helper.toHomanReadable(stream.displaySize || stream.size || 0)}`);
+    detailLines.push(`From ${stream.from}`);
 
     return `${baseTitle}\r\n\r\n${detailLines.join('\r\n')}`;
 }
@@ -534,6 +570,11 @@ function streamFromParsed(tor, parsedTorrent, streamInfo, runtimeConfig, cb) {
     } else {
         stream.fileIdx = null;
     }
+
+    if (stream.fileIdx !== null && parsedTorrent && parsedTorrent.files && parsedTorrent.files[stream.fileIdx]) {
+        stream.displaySize = parsedTorrent.files[stream.fileIdx].length || 0;
+    }
+
     const quality = helper.findQuality(tor.extraTag);
     let trackers = [];
     if (global.TRACKERS) {
@@ -571,6 +612,7 @@ function streamFromParsed(tor, parsedTorrent, streamInfo, runtimeConfig, cb) {
     stream.seeders = tor.seeders;
     stream.peers = tor.peers || 0;
     stream.size = tor.size || 0;
+    stream.displaySize = stream.displaySize || stream.size || 0;
     stream.hdr = helper.hasHdr(tor.title) ? 1 : 0;
     stream.resolution = helper.resolutionRank(tor.title);
     stream.bitrate = helper.findBitrate(tor.title);

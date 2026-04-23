@@ -1,4 +1,4 @@
-# Stremio Jackett Add-on
+# Jackett Stremio Fork
 
 ## General
 This is a Stremio addon that requires [Jackett](https://github.com/Jackett/Jackett) to search for torrents, which can be installed and run locally. To add the addon to Stremio, use the provided URL, and it should provide you with search results. By default, this addon will only work when the Stremio web player uses HTTP. If you want to use it with an HTTPS Stremio web player, you'll also need to ensure that the service is running with HTTPS. Please note that teaching you how to achieve this is beyond the scope of this guide.
@@ -47,9 +47,13 @@ The below options can be set as an evironment variable.
 | `DOWNLOAD_TORRENT_QUEUE` | 10 | `100` | Because external http downloads go through Jackett doing many downloads at the same time might cause some DDOS so I setup a queue for this. |
 | `RESPONSE_TIMEOUT` | 8000 | `12000` | This is the maximun time in millisecond that the request will last. The higher the most result you will get from slow indexers. |
 | `PORT` | 7000 | `8888` | The port which the Addon service will run on. |
-| `MIN_SEED` | 5 | `10` | The minimum amount of seeds we should return results for. |
+| `MIN_SEED` | ignored | `10` | Optional minimum seed filter. Leave empty or set `0` to ignore. |
 | `MAX_RESULTS` | 5 | `10` | Maximum results to return. |
-| `MAX_SIZE` | 5GB | `5GB` | Maximum size of the results we want to receive. Value is in Bytes. Default is 10GB. Supported formats: B/KB/MB/GB/TB . |
+| `MAX_SIZE` | ignored | `5GB` | Optional maximum size filter. Leave empty to ignore. Supported formats: B/KB/MB/GB/TB. |
+| `ALLOWED_LANGUAGES` | '' | `ru,he` | Comma-separated language filter and priority order. Jackett provider/indexer language is preferred, then item language tags, then release-title detection. |
+| `MIN_RESOLUTION` | '' | `720p` | Minimum resolution filter. Supported values: `480p`, `576p`, `720p`, `1080p`, `1440p`, `2160p`, `4k`. Results without a detectable resolution are dropped when this is set. |
+| `REJECT_KEYWORDS` | '' | `cam,ts,telecine` | Comma-separated title substrings to reject even if other filters pass. |
+| `SORT_ORDER` | `hdr,resolution,bitrate,size,peers` | `resolution,seeders,size` | Ranking fields applied after language priority. Supported values: `hdr`, `resolution`, `bitrate`, `size`, `peers`, `seeders`. |
 | `DEBUG` | false | `true` | Spams your terminal with info. |
 | `SEARCH_BY_TYPE` | false | `true` | By enabling this, we search by movie or tvshow instead of default search by category (2000,5000). |
 | `INTERVAL` | 500 | `100` | How often to check in miliseconds if we should return results based on user's timeout. |
@@ -90,6 +94,30 @@ docker build -t jackett-stremio:myversion .
 
 ## Jackett
 You need jackett installed for this addon to work. Going into detail on how to do that is out of the scope of this project.
+
+## Custom filtering
+
+This fork adds small Stremio-oriented filters:
+
+- `ALLOWED_LANGUAGES=ru,he` keeps and ranks releases by Jackett provider language first, then item language tags, then title detection.
+- `MIN_RESOLUTION=720p` keeps only releases at or above the configured resolution.
+- `MIN_SEED` and `MAX_SIZE` are optional. By default they are ignored so valid low-seed or pack results are not hidden.
+- `REJECT_KEYWORDS=cam,ts,telecine` removes noisy releases by title substring.
+
+For TV episode searches, the addon uses Jackett/Torznab `tvsearch` with season and episode parameters, then validates release titles locally. This keeps Russian trackers that need `tvsearch` while rejecting fuzzy matches from indexers that return the right episode number for the wrong show.
+
+## Maintenance
+
+- Use `.env.example` as the template for your local `.env`.
+- Use `npm run docker:up` to rebuild and start the addon.
+- Use `npm run docker:logs` to inspect the active runtime.
+- Keep the runtime container labeled for Watchtower updates.
+
+Supporting project docs:
+
+- [ROADMAP.md](ROADMAP.md)
+- [STATUS.md](STATUS.md)
+- [MAINTENANCE.md](MAINTENANCE.md)
 
 ### Install Jackett
 

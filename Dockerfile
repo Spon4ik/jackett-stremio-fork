@@ -10,6 +10,9 @@ ENV PORT=
 ENV MIN_SEED=
 ENV MAX_RESULTS=
 ENV MAX_SIZE=
+ENV ALLOWED_LANGUAGES=
+ENV MIN_RESOLUTION=
+ENV REJECT_KEYWORDS=
 ENV JACKETT_HOSTS=
 ENV JACKETT_APIKEYS=
 ENV JACKETT_RTIMEOUT=
@@ -39,9 +42,7 @@ LABEL version=${VERSION}
 
 
 COPY . .
-RUN chmod +x start.sh
 RUN apk update && apk upgrade && rm -rf /var/cache/apk/*
 RUN npm install --no-fund --omit=dev
 
-
-ENTRYPOINT ["./start.sh"]
+ENTRYPOINT ["node", "src/index.js"]

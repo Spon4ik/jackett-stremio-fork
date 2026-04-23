@@ -42,6 +42,32 @@ test('containsRejectedKeyword matches case-insensitive title substrings', () => 
   assert.equal(helper.containsRejectedKeyword('Movie.2024.WEB-DL.1080p', ['cam', 'telecine']), false);
 });
 
+test('titleMatchesRequestedContent rejects fuzzy Jackett tvsearch results for another show', () => {
+  const query = { type: 'series', name: 'The Miniature Wife', season: 1, episode: 1 };
+
+  assert.equal(helper.titleMatchesRequestedContent('The 100 - S1E1 - rusrip 1080p', query), false);
+  assert.equal(helper.titleMatchesRequestedContent('The Abyss - S1E1 - LostFilm 1080p', query), false);
+});
+
+test('titleMatchesRequestedContent keeps translated releases with requested latin title', () => {
+  const query = { type: 'series', name: 'The Miniature Wife', season: 1, episode: 1 };
+
+  assert.equal(
+    helper.titleMatchesRequestedContent('Миниатюрная жена (The Miniature Wife)S1E01-10 (HD 1080p WEBRip)', query),
+    true
+  );
+});
+
+test('titleMatchesRequestedContent accepts requested episode ranges and rejects other seasons', () => {
+  const query = { type: 'series', name: 'The Rookie', season: 8, episode: 15 };
+
+  assert.equal(
+    helper.titleMatchesRequestedContent('Новичок (S8E1-15 of 18) / Новобранец / The Rookie (2026) WEB-DL 1080p', query),
+    true
+  );
+  assert.equal(helper.titleMatchesRequestedContent('The Rookie S07E15 WEB-DL 1080p', query), false);
+});
+
 test('compareStreams prioritizes preferred language before later sort fields', () => {
   const runtimeConfig = {
     allowedLanguages: ['ru', 'he', 'en'],

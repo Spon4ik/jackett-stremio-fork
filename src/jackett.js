@@ -103,12 +103,13 @@ const search = async (query, runtimeConfig, abortSignals, cb, end) => {
 			ufcSearchName = encodeURIComponent(ufcMatch[0]);
 		}
 		searchQuery = '&t=search&cat=2000,5000&q=' + ufcSearchName;
-	} else if (config.searchByType) {
+	} else if (config.searchByType || (query.type === 'series' && query.season && query.episode)) {
 		const searchType = query.type && query.type == 'movie' ? "movie" : "tvsearch";
+		const cat = query.type && query.type == 'movie' ? 2000 : 5000;
 		if (query.season && query.episode) {
-			searchQuery = '&t=' + searchType + '&q=' + simpleName + '&season=' + query.season + '&ep=' + query.episode;
+			searchQuery = '&t=' + searchType + '&cat=' + cat + '&q=' + simpleName + '&season=' + query.season + '&ep=' + query.episode;
 		} else {
-			searchQuery = '&t=' + searchType + '&q=' + simpleName + '&year=' + query.year;
+			searchQuery = '&t=' + searchType + '&cat=' + cat + '&q=' + simpleName + '&year=' + query.year;
 		}
 	} else {
 		const cat = query.type && query.type == 'movie' ? 2000 : 5000;
@@ -224,7 +225,8 @@ const search = async (query, runtimeConfig, abortSignals, cb, end) => {
 									newObj[toIntElm] = parseInt(tempObj[toIntElm]);
 							});
 
-							if (newObj.seeders < runtimeConfig.minimumSeeds || newObj.size > runtimeConfig.maximumSize) {
+							if ((runtimeConfig.minimumSeeds > 0 && newObj.seeders < runtimeConfig.minimumSeeds)
+								|| (runtimeConfig.maximumSize > 0 && newObj.size > runtimeConfig.maximumSize)) {
 								return;
 							}
 
@@ -233,6 +235,10 @@ const search = async (query, runtimeConfig, abortSignals, cb, end) => {
 							}
 
 							if (helper.containsRejectedKeyword(newObj.title, runtimeConfig.rejectKeywords)) {
+								return;
+							}
+
+							if (!helper.titleMatchesRequestedContent(newObj.title, query)) {
 								return;
 							}
 

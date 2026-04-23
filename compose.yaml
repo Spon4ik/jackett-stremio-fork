@@ -1,0 +1,13 @@
+services:
+  jackett-stremio:
+    image: jackett-stremio-fork:latest
+    build:
+      context: .
+    container_name: jackett-stremio
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "7000:7000"
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
