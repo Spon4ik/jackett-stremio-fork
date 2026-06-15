@@ -138,6 +138,7 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
         <div class="panel grid">
             <div>
                 <h1>${config.addonName} Setup</h1>
+                <div class="note">Version ${version}</div>
                 <p>Choose which languages to prefer, set the minimum acceptable resolution, and define how results should be ranked after language preference is applied.</p>
             </div>
             <div class="triple">
