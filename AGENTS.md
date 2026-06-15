@@ -85,6 +85,16 @@ Never claim success based only on static reading if the code can be exercised.
 - After relevant tests, lint, build, and Docker checks pass, commit the completed versioned change to Git and push the working branch to the configured fork remote.
 - Never leave a completed version bump only in the local working tree unless the user explicitly asks not to commit or push.
 
+## Docker runtime freshness
+
+- Treat the running Docker Compose service as part of the deliverable, not as an optional follow-up.
+- After every completed change that affects application code, configuration, dependencies, version metadata, Docker files, or user-visible behavior, rebuild and recreate the active service with the repository's Compose workflow.
+- Do not assume that committing, pushing, or building an image updates an already-running container.
+- Before declaring completion, verify the active container was created from the current image and that its live `/manifest.json` version exactly matches `package.json`.
+- When the configure page exists, verify it displays the same version as `package.json` and the live manifest.
+- Preserve the required Watchtower label when recreating the service.
+- If the runtime cannot be updated or verified, report the task as incomplete rather than claiming the repository and deployed addon are synchronized.
+
 ---
 
 ## Project constraints
