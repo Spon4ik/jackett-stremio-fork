@@ -65,6 +65,9 @@ The below options can be set as an evironment variable.
 | `CACHE_INDEXERS_TIME` | 30 | `360` | The time in minutes to cache indexers and don't call jackett to get all of them every time.|
 | `CACHE_RESULTS_TIME` | 180 | `360` | The time in minutes to cache results in memory. Set to 0 to disable and always search in jackett.|
 | `TMDB_APIKEY` | 'sdfasdf23r' | `` | TMDB API key.|
+| `REAL_DEBRID_API_KEY` | '' | `your_private_token` | Optional Real-Debrid token. When set, Jackett results are returned as RD playback URLs instead of raw torrents. |
+| `INCLUDE_P2P_FALLBACK` | false | `true` | Also return an explicitly labeled raw P2P copy beside each RD result. |
+| `RD_STATUS_VIDEO_BASE_URL` | `https://torrentio.strem.fun/videos` | `https://example/videos` | Base URL for downloading/error status videos returned during RD playback. |
 
 
 
@@ -103,6 +106,12 @@ This fork adds small Stremio-oriented filters:
 - `MIN_RESOLUTION=720p` keeps only releases at or above the configured resolution.
 - `MIN_SEED` and `MAX_SIZE` are optional. By default they are ignored so valid low-seed or pack results are not hidden.
 - `REJECT_KEYWORDS=cam,ts,telecine` removes noisy releases by title substring.
+
+## Real-Debrid playback
+
+Set `REAL_DEBRID_API_KEY` or enter a token on the configure page. The addon keeps Jackett as the discovery source, then returns `[RD+]` for file selections successfully resolved during the last five days and `[RD download]` for unknown results. Selecting an unknown result adds the magnet to Real-Debrid, selects the matching file, and shows a downloading status; select it again after the transfer finishes. Successful playback redirects Stremio to the unrestricted Real-Debrid URL.
+
+Real-Debrid no longer provides a reliable global instant-availability lookup to addons, so `RD+` is intentionally learned from successful resolutions rather than guessed. Enable `INCLUDE_P2P_FALLBACK=true` to keep a `[P2P]` copy available when RD rejects or cannot process a release. Tokens placed in configured manifest URLs are Base64-encoded, not encrypted; environment configuration is safer for a personal deployment.
 
 For TV episode searches, the addon uses Jackett/Torznab `tvsearch` with season and episode parameters, then validates release titles locally. This keeps Russian trackers that need `tvsearch` while rejecting fuzzy matches from indexers that return the right episode number for the wrong show.
 

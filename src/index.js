@@ -11,10 +11,18 @@ const config = require('./config');
 const { getTrackers } = require('./trackers');
 const { configureConnectionPooling } = require('./requests');
 const { setCacheVariable, getCacheVariable } = require('./cache');
+const {
+    RealDebridClient,
+    RealDebridAvailabilityCache,
+    decorateStreamsForRealDebrid,
+    resolveRealDebridStream,
+} = require('./realdebrid');
 const version = require('../package.json').version;
 
 global.TRACKERS = [];
 global.BLACKLIST_TRACKERS = [];
+const realDebridAvailability = new RealDebridAvailabilityCache();
+const RD_STATUS_VIDEO_BASE_URL = process.env.RD_STATUS_VIDEO_BASE_URL || 'https://torrentio.strem.fun/videos';
 
 const respond = (res, data) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -44,6 +52,10 @@ function buildConfiguredAddonName(runtimeConfig) {
 
     if (runtimeConfig.maximumSize > 0 && runtimeConfig.maximumSizeInput) {
         parts.push(`max:${runtimeConfig.maximumSizeInput}`);
+    }
+
+    if (runtimeConfig.realDebridApiKey) {
+        parts.push(runtimeConfig.includeP2pFallback ? 'RD+P2P' : 'RD');
     }
 
     return parts.length > 0
@@ -242,6 +254,13 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
                 </div>
             </div>
             <div class="stack">
+                <h2>Real-Debrid</h2>
+                <p class="note">The token may be supplied here or with REAL_DEBRID_API_KEY. URL configuration is encoded, not encrypted.</p>
+                <label for="realDebridApiKey">API Token</label>
+                <input id="realDebridApiKey" type="password" autocomplete="off" placeholder="Use environment token">
+                <label><input id="includeP2pFallback" type="checkbox" style="width:auto;margin-right:8px;">Show labeled P2P fallback streams</label>
+            </div>
+            <div class="stack">
                 <button id="installButton" type="button">Generate Install URL</button>
                 <a id="openManifestLink" href="${manifestUrl}" style="display:block;color:#fde68a;text-decoration:none;">Open manifest URL</a>
                 <div class="note" id="configSummary">${summary}</div>
@@ -258,6 +277,8 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
         const minimumResolution = ${JSON.stringify(runtimeConfig.minimumResolution || '')};
         const minimumSeeds = ${JSON.stringify(runtimeConfig.minimumSeeds > 0 ? String(runtimeConfig.minimumSeeds) : '')};
         const maximumSize = ${JSON.stringify(runtimeConfig.maximumSize > 0 && runtimeConfig.maximumSizeInput ? runtimeConfig.maximumSizeInput : '')};
+        const realDebridApiKey = ${JSON.stringify(encodedConfig ? runtimeConfig.realDebridApiKey || '' : '')};
+        const includeP2pFallback = ${JSON.stringify(runtimeConfig.includeP2pFallback)};
 
         ['language1', 'language2', 'language3'].forEach((id, index) => {
             const element = document.getElementById(id);
@@ -272,6 +293,8 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
         document.getElementById('minimumResolution').value = minimumResolution;
         document.getElementById('minimumSeeds').value = minimumSeeds;
         document.getElementById('maximumSize').value = maximumSize;
+        document.getElementById('realDebridApiKey').value = realDebridApiKey;
+        document.getElementById('includeP2pFallback').checked = includeP2pFallback;
 
         function encodeConfig(config) {
             return btoa(JSON.stringify(config)).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
@@ -293,7 +316,9 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
                 minimumResolution: document.getElementById('minimumResolution').value,
                 minimumSeeds: document.getElementById('minimumSeeds').value,
                 maximumSize: document.getElementById('maximumSize').value.trim(),
-                sortOrder
+                sortOrder,
+                realDebridApiKey: document.getElementById('realDebridApiKey').value.trim(),
+                includeP2pFallback: document.getElementById('includeP2pFallback').checked
             };
 
             const encoded = encodeConfig(payload);
@@ -308,7 +333,7 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
                 ' | Sort: ' + (sortOrder.join(' > ') || 'default');
         }
 
-        ['language1', 'language2', 'language3', 'sort1', 'sort2', 'sort3', 'sort4', 'sort5', 'minimumResolution', 'minimumSeeds', 'maximumSize']
+        ['language1', 'language2', 'language3', 'sort1', 'sort2', 'sort3', 'sort4', 'sort5', 'minimumResolution', 'minimumSeeds', 'maximumSize', 'realDebridApiKey', 'includeP2pFallback']
             .forEach(id => document.getElementById(id).addEventListener('change', updateManifestUrl));
 
         document.getElementById('installButton').addEventListener('click', updateManifestUrl);
@@ -727,6 +752,13 @@ async function handleStreamRequest(req, res, userConfig = {}) {
         return respond(res, { streams: [] });
 
     const runtimeConfig = config.getRuntimeConfig(userConfig);
+    const rdBaseUrl = getBaseUrl(req, req.params.userConfig || '');
+    const formatStreams = streams => decorateStreamsForRealDebrid(streams, {
+        token: runtimeConfig.realDebridApiKey,
+        includeP2p: runtimeConfig.includeP2pFallback,
+        baseUrl: rdBaseUrl,
+        availabilityCache: realDebridAvailability,
+    });
     config.debug && console.log("Received request for :", req.params.type, req.params.id);
     console.log(`R: ${req.params.id} / langs: ${runtimeConfig.allowedLanguages.join('>') || 'none'} / minRes: ${runtimeConfig.minimumResolution || 'any'} / sort: ${runtimeConfig.sortOrder.join('>')}`);
     const cacheKey = `${req.params.id}:${JSON.stringify({
@@ -741,7 +773,7 @@ async function handleStreamRequest(req, res, userConfig = {}) {
         if (cached) {
             console.log("C: " + req.params.id + " cached.");
             return respond(res, {
-                streams: cached,
+                streams: formatStreams(cached),
                 "cacheMaxAge": 7200,
                 "staleRevalidate": 14400,
                 "staleError": 604800
@@ -817,7 +849,7 @@ async function handleStreamRequest(req, res, userConfig = {}) {
                     setCacheVariable(cacheKey, finalData, runtimeConfig.cacheResultsTime)
                 }
                 return respond(res, {
-                    streams: finalData,
+                    streams: formatStreams(finalData),
                     "cacheMaxAge": 7200,
                     "staleRevalidate": 14400,
                     "staleError": 604800
@@ -825,7 +857,7 @@ async function handleStreamRequest(req, res, userConfig = {}) {
             } else {
                 // If "streams" is empty, do not set cache-related headers
                 return respond(res, {
-                    streams: finalData
+                    streams: formatStreams(finalData)
                 });
             }
         }
@@ -924,6 +956,57 @@ addon.get('/stream/:type/:id.json', async (req, res) => {
 
 addon.get('/:userConfig/stream/:type/:id.json', async (req, res) => {
     return handleStreamRequest(req, res, config.getUserConfigFromRequest(req.params.userConfig));
+});
+
+function redirectToStatusVideo(res, filename) {
+    return res.redirect(302, `${RD_STATUS_VIDEO_BASE_URL}/${filename}`);
+}
+
+async function handleRealDebridPlayback(req, res, userConfig = {}) {
+    const runtimeConfig = config.getRuntimeConfig(userConfig);
+    if (!runtimeConfig.realDebridApiKey) {
+        return redirectToStatusVideo(res, 'failed_access_v2.mp4');
+    }
+
+    const infoHash = String(req.params.infoHash || '').toLowerCase();
+    const fileIndex = parseInt(req.params.fileIndex, 10);
+    if (!/^[a-f0-9]{40}$/.test(infoHash) || Number.isNaN(fileIndex) || fileIndex < -1) {
+        return redirectToStatusVideo(res, 'failed_opening_v2.mp4');
+    }
+
+    try {
+        const result = await resolveRealDebridStream({
+            api: new RealDebridClient(runtimeConfig.realDebridApiKey),
+            infoHash,
+            fileIndex,
+            availabilityCache: realDebridAvailability,
+            waitForDownload: realDebridAvailability.has(infoHash, fileIndex),
+        });
+        if (result.status === 'ready') {
+            return res.redirect(302, result.url);
+        }
+        return redirectToStatusVideo(res, 'downloading_v2.mp4');
+    } catch (error) {
+        console.error(`Real-Debrid playback failed for ${infoHash}: ${error.message}`);
+        if ([8, 9, 20].includes(error.code)) {
+            return redirectToStatusVideo(res, 'failed_access_v2.mp4');
+        }
+        if (error.code === 35) {
+            return redirectToStatusVideo(res, 'failed_infringement_v2.mp4');
+        }
+        if ([21, 23, 26, 36].includes(error.code)) {
+            return redirectToStatusVideo(res, 'limits_exceeded_v1.mp4');
+        }
+        return redirectToStatusVideo(res, 'failed_unexpected_v2.mp4');
+    }
+}
+
+addon.get('/realdebrid/play/:infoHash/:fileIndex/:filename', async (req, res) => {
+    return handleRealDebridPlayback(req, res);
+});
+
+addon.get('/:userConfig/realdebrid/play/:infoHash/:fileIndex/:filename', async (req, res) => {
+    return handleRealDebridPlayback(req, res, config.getUserConfigFromRequest(req.params.userConfig));
 });
 
 const runAddon = async () => {

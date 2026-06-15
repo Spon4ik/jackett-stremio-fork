@@ -122,6 +122,10 @@ const defaultConfig = {
 
   "tmdbAPIKey": process.env.TMDB_APIKEY || "",
 
+  "realDebridApiKey": process.env.REAL_DEBRID_API_KEY || "",
+
+  "includeP2pFallback": parseBoolean(process.env.INCLUDE_P2P_FALLBACK),
+
   "updateTrackersInterval": parseInt(process.env.UPDATE_TRACKERS_INTERVAL) || 1440,
 
   "jackett": {
@@ -258,6 +262,8 @@ function getRuntimeConfig(overrides = {}) {
   const hasMaximumSizeOverride = Object.prototype.hasOwnProperty.call(overrides, 'maximumSize');
   const hasMinimumResolutionOverride = Object.prototype.hasOwnProperty.call(overrides, 'minimumResolution');
   const hasSortOrderOverride = Object.prototype.hasOwnProperty.call(overrides, 'sortOrder');
+  const hasRealDebridApiKeyOverride = Object.prototype.hasOwnProperty.call(overrides, 'realDebridApiKey');
+  const hasIncludeP2pFallbackOverride = Object.prototype.hasOwnProperty.call(overrides, 'includeP2pFallback');
 
   const allowedLanguages = hasAllowedLanguagesOverride && Array.isArray(overrides.allowedLanguages)
     ? parseLanguageOrder(overrides.allowedLanguages.join(','), defaultConfig.allowedLanguages)
@@ -281,6 +287,12 @@ function getRuntimeConfig(overrides = {}) {
     sortOrder: hasSortOrderOverride
       ? parseSortOrder(Array.isArray(overrides.sortOrder) ? overrides.sortOrder.join(',') : overrides.sortOrder, defaultConfig.sortOrder)
       : defaultConfig.sortOrder,
+    realDebridApiKey: hasRealDebridApiKeyOverride
+      ? String(overrides.realDebridApiKey || '').trim()
+      : defaultConfig.realDebridApiKey,
+    includeP2pFallback: hasIncludeP2pFallbackOverride
+      ? parseBoolean(overrides.includeP2pFallback)
+      : defaultConfig.includeP2pFallback,
   };
 }
 
@@ -301,6 +313,12 @@ function getUserConfigFromRequest(encodedConfig) {
       : {}),
     ...(Object.prototype.hasOwnProperty.call(decodedConfig, 'sortOrder')
       ? { sortOrder: parseSortOrder(Array.isArray(decodedConfig.sortOrder) ? decodedConfig.sortOrder.join(',') : '', defaultConfig.sortOrder) }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(decodedConfig, 'realDebridApiKey')
+      ? { realDebridApiKey: String(decodedConfig.realDebridApiKey || '').trim() }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(decodedConfig, 'includeP2pFallback')
+      ? { includeP2pFallback: parseBoolean(decodedConfig.includeP2pFallback) }
       : {}),
   };
 }
