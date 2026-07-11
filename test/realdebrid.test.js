@@ -24,8 +24,8 @@ test('decorates RD streams while always retaining a magnet-copy stream', () => {
   const cache = new RealDebridAvailabilityCache();
   cache.remember('cachedhash', [3]);
   const streams = [
-    { infoHash: 'cachedhash', fileIdx: 2, seeders: 0, name: 'Jackett\n1080p', title: 'Cached' },
-    { infoHash: 'newhash', fileIdx: 0, seeders: 4, name: 'Jackett\n720p', title: 'New' },
+    { infoHash: 'cachedhash', fileIdx: 2, sources: ['tracker:udp://tracker.example:80', 'dht:cachedhash'], seeders: 0, name: 'Jackett\n1080p', title: 'Cached' },
+    { infoHash: 'newhash', fileIdx: 0, sources: ['tracker:udp://tracker.example:80', 'dht:newhash'], seeders: 4, name: 'Jackett\n720p', title: 'New' },
   ];
 
   const result = decorateStreamsForRealDebrid(streams, {
@@ -43,6 +43,7 @@ test('decorates RD streams while always retaining a magnet-copy stream', () => {
   assert.deepEqual(result[1].sources, streams[0].sources);
   assert.match(result[2].name, /^\[RD download\]/);
   assert.match(result[3].name, /^\[Magnet\]/);
+  assert.deepEqual(result[3].sources, streams[1].sources);
 });
 
 test('each RD stream has a magnet-copy companion', () => {
