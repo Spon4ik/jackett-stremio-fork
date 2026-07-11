@@ -55,7 +55,7 @@ function buildConfiguredAddonName(runtimeConfig) {
     }
 
     if (runtimeConfig.realDebridApiKey) {
-        parts.push(runtimeConfig.includeP2pFallback ? 'RD+P2P' : 'RD');
+        parts.push('RD+Magnet');
     }
 
     return parts.length > 0
@@ -259,7 +259,7 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
                 <p class="note">The token may be supplied here or with REAL_DEBRID_API_KEY. URL configuration is encoded, not encrypted.</p>
                 <label for="realDebridApiKey">API Token</label>
                 <input id="realDebridApiKey" type="password" autocomplete="off" placeholder="Use environment token">
-                <label><input id="includeP2pFallback" type="checkbox" style="width:auto;margin-right:8px;">Show labeled P2P fallback streams</label>
+                <p class="note">Every RD result also includes a <code>[Magnet]</code> stream so Stremio can copy its magnet link.</p>
             </div>
             <div class="stack">
                 <button id="installButton" type="button">Generate Install URL</button>
@@ -279,7 +279,6 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
         const minimumSeeds = ${JSON.stringify(runtimeConfig.minimumSeeds > 0 ? String(runtimeConfig.minimumSeeds) : '')};
         const maximumSize = ${JSON.stringify(runtimeConfig.maximumSize > 0 && runtimeConfig.maximumSizeInput ? runtimeConfig.maximumSizeInput : '')};
         const realDebridApiKey = ${JSON.stringify(encodedConfig ? runtimeConfig.realDebridApiKey || '' : '')};
-        const includeP2pFallback = ${JSON.stringify(runtimeConfig.includeP2pFallback)};
 
         ['language1', 'language2', 'language3'].forEach((id, index) => {
             const element = document.getElementById(id);
@@ -295,7 +294,6 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
         document.getElementById('minimumSeeds').value = minimumSeeds;
         document.getElementById('maximumSize').value = maximumSize;
         document.getElementById('realDebridApiKey').value = realDebridApiKey;
-        document.getElementById('includeP2pFallback').checked = includeP2pFallback;
 
         function encodeConfig(config) {
             return btoa(JSON.stringify(config)).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
@@ -318,8 +316,7 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
                 minimumSeeds: document.getElementById('minimumSeeds').value,
                 maximumSize: document.getElementById('maximumSize').value.trim(),
                 sortOrder,
-                realDebridApiKey: document.getElementById('realDebridApiKey').value.trim(),
-                includeP2pFallback: document.getElementById('includeP2pFallback').checked
+                realDebridApiKey: document.getElementById('realDebridApiKey').value.trim()
             };
 
             const encoded = encodeConfig(payload);
@@ -334,7 +331,7 @@ function renderConfigurePage(req, runtimeConfig, encodedConfig = '') {
                 ' | Sort: ' + (sortOrder.join(' > ') || 'default');
         }
 
-        ['language1', 'language2', 'language3', 'sort1', 'sort2', 'sort3', 'sort4', 'sort5', 'minimumResolution', 'minimumSeeds', 'maximumSize', 'realDebridApiKey', 'includeP2pFallback']
+        ['language1', 'language2', 'language3', 'sort1', 'sort2', 'sort3', 'sort4', 'sort5', 'minimumResolution', 'minimumSeeds', 'maximumSize', 'realDebridApiKey']
             .forEach(id => document.getElementById(id).addEventListener('change', updateManifestUrl));
 
         document.getElementById('installButton').addEventListener('click', updateManifestUrl);
@@ -756,7 +753,6 @@ async function handleStreamRequest(req, res, userConfig = {}) {
     const rdBaseUrl = getBaseUrl(req, req.params.userConfig || '');
     const formatStreams = streams => decorateStreamsForRealDebrid(streams, {
         token: runtimeConfig.realDebridApiKey,
-        includeP2p: runtimeConfig.includeP2pFallback,
         baseUrl: rdBaseUrl,
         availabilityCache: realDebridAvailability,
     });

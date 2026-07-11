@@ -1,6 +1,6 @@
 {
   "name": "jackett-stremio-fork",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Focused Stremio add-on for self-hosted Jackett with local filtering",
   "main": "src/index.js",
   "scripts": {

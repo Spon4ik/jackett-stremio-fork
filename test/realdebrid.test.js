@@ -20,7 +20,7 @@ test('availability cache remembers exact selected file sets and expires entries'
   assert.equal(cache.has('abc', 1), false);
 });
 
-test('decorates known files as RD+ and unknown healthy files as RD download', () => {
+test('decorates RD streams while always retaining a magnet-copy stream', () => {
   const cache = new RealDebridAvailabilityCache();
   cache.remember('cachedhash', [3]);
   const streams = [
@@ -32,28 +32,30 @@ test('decorates known files as RD+ and unknown healthy files as RD download', ()
     token: 'token',
     baseUrl: 'http://addon/config',
     availabilityCache: cache,
-    includeP2p: false,
   });
 
-  assert.equal(result.length, 2);
+  assert.equal(result.length, 4);
   assert.match(result[0].name, /^\[RD\+\]/);
   assert.match(result[0].url, /\/realdebrid\/play\/cachedhash\/2\/Cached$/);
   assert.equal(result[0].infoHash, undefined);
-  assert.match(result[1].name, /^\[RD download\]/);
+  assert.match(result[1].name, /^\[Magnet\]/);
+  assert.equal(result[1].infoHash, 'cachedhash');
+  assert.deepEqual(result[1].sources, streams[0].sources);
+  assert.match(result[2].name, /^\[RD download\]/);
+  assert.match(result[3].name, /^\[Magnet\]/);
 });
 
-test('mixed mode retains an explicitly labeled P2P copy', () => {
+test('each RD stream has a magnet-copy companion', () => {
   const stream = { infoHash: 'hash', fileIdx: 0, seeders: 1, name: 'Jackett\n720p', title: 'Release' };
   const result = decorateStreamsForRealDebrid([stream], {
     token: 'token',
     baseUrl: 'http://addon/config',
     availabilityCache: new RealDebridAvailabilityCache(),
-    includeP2p: true,
   });
 
   assert.equal(result.length, 2);
   assert.match(result[0].name, /^\[RD download\]/);
-  assert.match(result[1].name, /^\[P2P\]/);
+  assert.match(result[1].name, /^\[Magnet\]/);
   assert.equal(result[1].infoHash, 'hash');
 });
 
@@ -63,7 +65,6 @@ test('streams without a file index preserve automatic RD file selection', () => 
     token: 'token',
     baseUrl: 'http://addon',
     availabilityCache: new RealDebridAvailabilityCache(),
-    includeP2p: false,
   });
 
   assert.match(result[0].url, /\/realdebrid\/play\/hash\/-1\/Pack$/);

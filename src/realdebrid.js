@@ -164,9 +164,9 @@ function decorateStreamsForRealDebrid(streams, options) {
     delete rdStream.sources;
     result.push(rdStream);
 
-    if (options.includeP2p) {
-      result.push({ ...stream, name: `[P2P] ${stream.name}` });
-    }
+    // Keep the torrent-shaped stream as well as the RD URL. Stremio uses
+    // infoHash/sources to expose its magnet action; the RD URL cannot provide it.
+    result.push({ ...stream, name: `[Magnet] ${stream.name}` });
   }
   return result;
 }
